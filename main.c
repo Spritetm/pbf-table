@@ -80,9 +80,9 @@ void portout(uint16_t port, uint8_t val) {
 		int col=vga_pal_idx>>2;
 		int attr=vga_pal_idx&3;
 		val<<=2;  //vga palette is 6 bit per color
-		if (attr==0) pal[col]=(pal[col]&0xffff00)|(val<<0);
+		if (attr==0) pal[col]=(pal[col]&0x00ffff)|(val<<16);
 		if (attr==1) pal[col]=(pal[col]&0xff00ff)|(val<<8);
-		if (attr==2) pal[col]=(pal[col]&0x00ffff)|(val<<16);
+		if (attr==2) pal[col]=(pal[col]&0xffff00)|(val<<0);
 		if (attr==2) vga_pal_idx+=2; else vga_pal_idx++;
 	} else if (port==0x3D4) {
 		vga_seq_addr=val&31;
@@ -111,32 +111,12 @@ void write86(uint32_t addr32, uint8_t value) {
 	if (addr32<0x10000) {
 		printf("Write 0x%02X to 0x%X!\n", value, addr32);
 	} else if (addr32>=0xA0000 && addr32<0xB0000) {
-		//We need to do de-planing...
+		//Pinball Fantasies uses Mode X.
 		int vaddr=addr32-0xA0000;
-		if (vga_mask&8) {
-			vram[vaddr*4+0]=(vram[vaddr*4+0]&0xFC)|((value>>0)&3);
-			vram[vaddr*4+1]=(vram[vaddr*4+1]&0xFC)|((value>>2)&3);
-			vram[vaddr*4+2]=(vram[vaddr*4+2]&0xFC)|((value>>4)&3);
-			vram[vaddr*4+3]=(vram[vaddr*4+3]&0xFC)|((value>>6)&3);
-		}
-		if (vga_mask&4) {
-			vram[vaddr*4+0]=(vram[vaddr*4+0]&0xF3)|(((value>>0)&3)<<2);
-			vram[vaddr*4+1]=(vram[vaddr*4+1]&0xF3)|(((value>>2)&3)<<2);
-			vram[vaddr*4+2]=(vram[vaddr*4+2]&0xF3)|(((value>>4)&3)<<2);
-			vram[vaddr*4+3]=(vram[vaddr*4+3]&0xF3)|(((value>>6)&3)<<2);
-		}
-		if (vga_mask&2) {
-			vram[vaddr*4+0]=(vram[vaddr*4+0]&0xCF)|(((value>>0)&3)<<4);
-			vram[vaddr*4+1]=(vram[vaddr*4+1]&0xCF)|(((value>>2)&3)<<4);
-			vram[vaddr*4+2]=(vram[vaddr*4+2]&0xCF)|(((value>>4)&3)<<4);
-			vram[vaddr*4+3]=(vram[vaddr*4+3]&0xCF)|(((value>>6)&3)<<4);
-		}
-		if (vga_mask&1) {
-			vram[vaddr*4+0]=(vram[vaddr*4+0]&0x3F)|(((value>>0)&3)<<6);
-			vram[vaddr*4+1]=(vram[vaddr*4+1]&0x3F)|(((value>>2)&3)<<6);
-			vram[vaddr*4+2]=(vram[vaddr*4+2]&0x3F)|(((value>>4)&3)<<6);
-			vram[vaddr*4+3]=(vram[vaddr*4+3]&0x3F)|(((value>>6)&3)<<6);
-		}
+		if (vga_mask&1) vram[vaddr*4+0]=value;
+		if (vga_mask&2) vram[vaddr*4+1]=value;
+		if (vga_mask&4) vram[vaddr*4+2]=value;
+		if (vga_mask&8) vram[vaddr*4+3]=value;
 	} else {
 		ram[addr32]=value;
 	}
@@ -309,6 +289,7 @@ int load_mz(const char *exefile, int load_start_addr) {
 		//possibly need to do this manually if unaligned?
 		uint16_t *w=(uint16_t*)&ram[load_start_addr+adr];
 		*w=*w+(load_start_addr/0x10);
+		printf("Fixup at %x\n", load_start_addr+adr);
 	}
 	cpu.segregs[regds]=(load_start_addr-256)/0x10;
 	cpu.segregs[reges]=(load_start_addr-256)/0x10;
@@ -336,7 +317,7 @@ void force_callback(int seg, int off) {
 int main(int argc, char** argv) {
 	gfx_init();
 	init_intr_table();
-	load_mz("../data/TABLE1.PRG", 0x10000);
+	load_mz("../data/TABLE4.PRG", 0x10000);
 	while(1) {
 		exec86(20000);
 		if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off);
@@ -344,7 +325,6 @@ int main(int argc, char** argv) {
 		if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off);
 		printf("hor %d ver %d\n", vga_hor, vga_ver);
 		gfx_show(vram, pal, vga_ver, vga_hor*2);
-//		gfx_show(vram, pal, 700,350);
 		gfx_tick();
 	}
 	return 0;
