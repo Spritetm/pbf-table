@@ -43,14 +43,9 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int w, int h) {
 	uint32_t *pixels;
 	int pitch;
 	int r=SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch);
-	int shown[255]={0};
 	for (int y=0; y<h; y++) {
 		for (int x=0; x<w; x++) {
 			pixels[y*(pitch/4)+x]=pal[buf[y*w+x]];
-			if (shown[buf[y*w+x]]==0 && y<32) {
-				printf("col %06X\n", pal[buf[y*w+x]]);
-				shown[buf[y*w+x]]=1;
-			}
 		}
 	}
 

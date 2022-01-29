@@ -4,6 +4,8 @@
 #include "cpu.h"
 #include <string.h>
 #include "gfx.h"
+#include "cpu_addr_space.h"
+#include "ibxm/ibxm.h"
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
@@ -97,7 +99,7 @@ void portout(uint16_t port, uint8_t val) {
 			vga_ver=val*8;
 		}
 	} else {
-		printf("Port 0x%X val 0x%02X\n", port, val);
+//		printf("Port 0x%X val 0x%02X\n", port, val);
 	}
 }
 
@@ -107,59 +109,53 @@ void portout16(uint16_t port, uint16_t val) {
 	portout(port+1, val>>8);
 }
 
-void write86(uint32_t addr32, uint8_t value) {
-	if (addr32<0x10000) {
-		printf("Write 0x%02X to 0x%X!\n", value, addr32);
-	} else if (addr32>=0xA0000 && addr32<0xB0000) {
-		//Pinball Fantasies uses Mode X.
-		int vaddr=addr32-0xA0000;
-		if (vga_mask&1) vram[vaddr*4+0]=value;
-		if (vga_mask&2) vram[vaddr*4+1]=value;
-		if (vga_mask&4) vram[vaddr*4+2]=value;
-		if (vga_mask&8) vram[vaddr*4+3]=value;
-	} else {
-		ram[addr32]=value;
-	}
+void vga_mem_write(int addr, uint8_t data, mem_chunk_t *ch) {
+	//Pinball Fantasies uses Mode X.
+	int vaddr=addr-0xA0000;
+	if (vga_mask&1) vram[vaddr*4+0]=data;
+	if (vga_mask&2) vram[vaddr*4+1]=data;
+	if (vga_mask&4) vram[vaddr*4+2]=data;
+	if (vga_mask&8) vram[vaddr*4+3]=data;
 }
-void writew86(uint32_t addr32, uint16_t value) {
-	write86(addr32, value&0xff);
-	write86(addr32+1, value>>8);
+
+uint8_t vga_mem_read(int addr, mem_chunk_t *ch) {
+	printf("VGA mem read unimplemented!\n");
+}
+
+void init_vga_mem() {
+	cpu_addr_space_map_cb(0xa0000, 0x10000, vga_mem_write, vga_mem_read, NULL);
 }
 
 int hook_interrupt_call(uint8_t intr);
 
+void intr_table_writefn(int addr, uint8_t data, mem_chunk_t *ch) {
+	uint8_t *mem=(uint8_t*)ch->usr;
+	if (addr<1024) mem[addr]=data;
+}
+
+uint8_t intr_table_readfn(int addr, mem_chunk_t *ch) {
+	uint8_t *mem=(uint8_t*)ch->usr;
+	if (addr<1024) {
+		return mem[addr];
+	} else {
+		int intr=(addr-1024);
+		if (intr<256) hook_interrupt_call(intr);
+		return 0xcf; //IRET
+	}
+}
+
 void init_intr_table() {
 	//Set up interrupt table so each interrupt i vectors to address (1024+i)
+	uint8_t *ram=malloc(256*4);
 	for (int i=0; i<256; i++) {
 		ram[i*4+2]=0x40;
 		ram[i*4+3]=0;
 		ram[i*4+0]=i;
 		ram[i*4+1]=0;
 	}
+	cpu_addr_space_map_cb(0, 2048, intr_table_writefn, intr_table_readfn, ram);
 }
 
-uint8_t read86(uint32_t addr32) {
-	if (addr32<1024) {
-//		printf("ISR vec read 0x%X -> %X\n", addr32, ram[addr32]);
-		return ram[addr32];
-	} else if (addr32<1024+256) {
-		//special region; the default interrupt table points here. If we read from here, it's because
-		//we're trying to execute an interrupt that needs to be high-level emulated.
-		//assume read from here because of interrupt
-		int intr=addr32-1024;
-//		printf("ISR trap ins read 0x%X\n", intr);
-		hook_interrupt_call(intr);
-		return 0xcf; //IRET
-	} else if (addr32<0x10000) {
-		printf("Read from 0x%X!\n", addr32);
-		return ram[addr32];
-	} else {
-		return ram[addr32];
-	}
-}
-uint16_t readw86(uint32_t addr32) {
-	return read86(addr32)+(read86(addr32+1)*0x100);
-}
 
 int cb_raster_seg=0, cb_raster_off=0;
 int cb_blank_seg=0, cb_blank_off=0;
@@ -227,7 +223,11 @@ int hook_interrupt_call(uint8_t intr) {
 	} else if (intr==0x66 && REG_AX==17) {
 		printf("audio: play sound effect in cl,bl,dl at volume bh\n");
 	} else if (intr==0x66 && REG_AX==18) {
-		printf("audio: load mod in ds:dx\n");
+		int adr=(REG_DS*0x10)+REG_DX;
+		char name[13]={0};
+		for (int i=0; i<12; i++) name[i]=cpu_addr_space_read8(adr+i);
+		printf("audio: load mod in ds:dx: %s\n", name);
+		
 	} else if (intr==0x66 && REG_AX==4) {
 		printf("audio: play module ?idx is in bx? at rate cx (0 if default)\n");
 	} else if (intr==0x66 && REG_AX==15) {
@@ -282,13 +282,16 @@ int load_mz(const char *exefile, int load_start_addr) {
 	}
 	int exe_data_start = hdr->header_paragraphs*16;
 	printf("mz: data starts at %d\n", exe_data_start);
-	memcpy(&ram[load_start_addr], &exe[exe_data_start], size-exe_data_start);
+	cpu_addr_space_map_cow(&exe[exe_data_start], load_start_addr, size-exe_data_start);
+
 	mz_reloc_t *relocs=(mz_reloc_t*)&exe[hdr->reloc_table_offset];
 	for (int i=0; i<hdr->num_relocs; i++) {
 		int adr=relocs[i].segment*0x10+relocs[i].offset;
-		//possibly need to do this manually if unaligned?
-		uint16_t *w=(uint16_t*)&ram[load_start_addr+adr];
-		*w=*w+(load_start_addr/0x10);
+		int w=cpu_addr_space_read8(load_start_addr+adr);
+		w|=cpu_addr_space_read8(load_start_addr+adr+1)<<8;
+		w=w+(load_start_addr/0x10);
+		cpu_addr_space_write8(load_start_addr+adr, w&0xff);
+		cpu_addr_space_write8(load_start_addr+adr+1, w>>8);
 		printf("Fixup at %x\n", load_start_addr+adr);
 	}
 	cpu.segregs[regds]=(load_start_addr-256)/0x10;
@@ -298,32 +301,43 @@ int load_mz(const char *exefile, int load_start_addr) {
 	cpu.regs.wordregs[regax]=0; //should be related to psp, but we don't emu that.
 	cpu.regs.wordregs[regsp]=hdr->sp;
 	cpu.ip=hdr->ip;
+	printf("Exe load done. CPU is set up to start at %04X:%04X (%06X).\n", cpu.segregs[regcs], cpu.ip, cpu.segregs[regcs]*0x10+cpu.ip);
+	for (int i=0; i<32; i++) printf("%02X ", cpu_addr_space_read8(cpu.segregs[regcs]*0x10+cpu.ip+i));
+	printf("\n");
 	return size-exe_data_start;
 }
 
 void force_callback(int seg, int off) {
 	struct cpu cpu_backup;
+	//Save existing registers
 	cpu_backup=cpu;
+	//set cs:ip to address of callback
 	cpu.segregs[regcs]=seg;
 	cpu.ip=off;
+	//increase sp by two, as if there was a call that pushed the address of the calling function
+	//on the stack
 	cpu.regs.wordregs[regsp]=cpu.regs.wordregs[regsp]-2;
-	printf("CB\n");
+	//Run the callback until we can see the return address has been popped; this
+	//indicates a ret happened.
 	while (cpu.regs.wordregs[regsp]<cpu_backup.regs.wordregs[regsp]) exec86(1);
-	printf("CB done\n");
+	//Restore registers
 	cpu=cpu_backup;
 }
 
 
 int main(int argc, char** argv) {
-	gfx_init();
+	cpu_addr_space_init();
 	init_intr_table();
-	load_mz("../data/TABLE4.PRG", 0x10000);
+	init_vga_mem();
+	gfx_init();
+	load_mz("../data/TABLE2.PRG", 0x10000);
 	while(1) {
 		exec86(20000);
 		if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off);
 		exec86(20000);
 		if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off);
-		printf("hor %d ver %d\n", vga_hor, vga_ver);
+//		printf("hor %d ver %d\n", vga_hor, vga_ver);
+//		cpu_addr_space_dump();
 		gfx_show(vram, pal, vga_ver, vga_hor*2);
 		gfx_tick();
 	}
