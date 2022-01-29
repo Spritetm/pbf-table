@@ -1,12 +1,13 @@
 #include "stdint.h"
 #include <SDL2/SDL.h>
+#include "gfx.h"
 
 SDL_Window *window;
 SDL_Renderer *renderer;
 SDL_Texture *texture;
 
 #define TEX_WIDTH 320
-#define TEX_HEIGHT 600
+#define TEX_HEIGHT 607
 
 #define SCREEN_WIDTH TEX_WIDTH*2
 #define SCREEN_HEIGHT TEX_HEIGHT*2
@@ -53,4 +54,30 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int w, int h) {
 	SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
+}
+
+
+static SDL_AudioDeviceID audio_dev_id;
+
+void init_audio(int samprate, audio_cb_t cb) {
+	SDL_AudioSpec want={0}, have={0};
+	want.freq=samprate;
+	want.format=AUDIO_S16SYS;
+	want.channels=2;
+	want.samples=1024*1;
+	want.callback=cb;
+	audio_dev_id=SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+	if (audio_dev_id<=0) {
+		printf("Can't initialize sdl audio\n");
+		exit(1);
+	}
+	SDL_PauseAudioDevice(audio_dev_id, 0);
+}
+
+void audio_lock() {
+	SDL_LockAudioDevice(audio_dev_id);
+}
+
+void audio_unlock() {
+	SDL_UnlockAudioDevice(audio_dev_id);
 }

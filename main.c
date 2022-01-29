@@ -9,6 +9,15 @@
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
+
+#define SAMP_RATE 44100
+struct module *music_module;
+struct replay *music_replay;
+uint8_t *music_mixbuf;
+int music_mixbuf_len;
+int music_mixbuf_left;
+
+
 //from http://www.delorie.com/djgpp/doc/exe/
 typedef struct {
   uint16_t signature; /* == 0x5a4D */
@@ -104,7 +113,7 @@ void portout(uint16_t port, uint8_t val) {
 }
 
 void portout16(uint16_t port, uint16_t val) {
-	printf("Port 0x%X val 0x%04X\n", port, val);
+//	printf("Port 0x%X val 0x%04X\n", port, val);
 	portout(port, val&0xff);
 	portout(port+1, val>>8);
 }
@@ -210,43 +219,48 @@ int hook_interrupt_call(uint8_t intr) {
 	} else if (intr==0x33) {
 		//Mouse interrupt
 		REG_AX=0; //no mouse
-	} else if (intr==0x66 && REG_AX==8) {
+	} else if (intr==0x66 && (REG_AX&0xff)==8) {
 //		printf("audio: fill music buffer\n");
-	} else if (intr==0x66 && REG_AX==16) {
-		printf("audio: play jingle in bx\n");
-	} else if (intr==0x66 && REG_AX==21) {
+	} else if (intr==0x66 && (REG_AX&0xff)==16) {
+		printf("audio: play jingle in bx: 0x%X\n", REG_BX);
+		audio_lock();
+		replay_set_sequence_pos(music_replay, REG_BX);
+		audio_unlock();
+	} else if (intr==0x66 && (REG_AX&0xff)==21) {
 		printf("audio: get status, AL returns bitfield, bit 3 set if silent? (Maybe channel usage bitmap?)\n");
-	} else if (intr==0x66 && REG_AX==22) {
+	} else if (intr==0x66 && (REG_AX&0xff)==22) {
 		printf("audio: ?get amount of data in buffers into ax?\n");
-	} else if (intr==0x66 && REG_AX==16) {
+	} else if (intr==0x66 && (REG_AX&0xff)==16) {
 		printf("audio: force position in bx. ret al=old pos\n");
-	} else if (intr==0x66 && REG_AX==17) {
+	} else if (intr==0x66 && (REG_AX&0xff)==17) {
 		printf("audio: play sound effect in cl,bl,dl at volume bh\n");
-	} else if (intr==0x66 && REG_AX==18) {
+	} else if (intr==0x66 && (REG_AX&0xff)==18) {
 		int adr=(REG_DS*0x10)+REG_DX;
-		char name[13]={0};
-		for (int i=0; i<12; i++) name[i]=cpu_addr_space_read8(adr+i);
+		char name[64]={0};
+		for (int i=0; i<64; i++) name[i]=cpu_addr_space_read8(adr+i);
 		printf("audio: load mod in ds:dx: %s\n", name);
-		
-	} else if (intr==0x66 && REG_AX==4) {
-		printf("audio: play module ?idx is in bx? at rate cx (0 if default)\n");
-	} else if (intr==0x66 && REG_AX==15) {
+	} else if (intr==0x66 && (REG_AX&0xff)==4) {
+		printf("audio: play module ?idx is in bx: 0x%X? at rate cx %d (0 if default)\n", REG_BX, REG_CX);
+//		audio_lock();
+//		replay_set_sequence_pos(music_replay, REG_BX-1);
+//		audio_unlock();
+	} else if (intr==0x66 && (REG_AX&0xff)==15) {
 		printf("audio: stop play\n");
-	} else if (intr==0x66 && REG_AX==6) {
+	} else if (intr==0x66 && (REG_AX&0xff)==6) {
 		printf("set vol in cx?\n");
-	} else if (intr==0x66 && REG_AX==0) {
+	} else if (intr==0x66 && (REG_AX&0xff)==0) {
 		printf("deinit sound device\n");
-	} else if (intr==0x66 && REG_AX==11) {
+	} else if (intr==0x66 && (REG_AX&0xff)==11) {
 		//note: far call?
 		printf("init vblank interrupt to es:dx\n");
 		cb_blank_seg=REG_ES;
 		cb_blank_off=REG_DX;
-	} else if (intr==0x66 && REG_AX==12) {
+	} else if (intr==0x66 && (REG_AX&0xff)==12) {
 		//note: far call
 		printf("init raster interrupt to es:dx, raster in bl or cx?\n");
 		cb_raster_seg=REG_ES;
 		cb_raster_off=REG_DX;
-	} else if (intr==0x66 && REG_AX==19) {
+	} else if (intr==0x66 && (REG_AX&0xff)==19) {
 		printf("init jingle handler to es:dx\n");
 	} else {
 		printf("Unhandled interrupt 0x%X\n", intr);
@@ -324,13 +338,63 @@ void force_callback(int seg, int off) {
 	cpu=cpu_backup;
 }
 
+void music_init(const char *fname) {
+	FILE *f=fopen(fname, "r");
+	if (!f) {
+		perror(fname);
+		exit(1);
+	}
+	fseek(f, 0, SEEK_END);
+	int len=ftell(f);
+	fseek(f, 0, SEEK_SET);
+	struct data mod_data;
+	mod_data.buffer=malloc(len);
+	fread(mod_data.buffer, 1, len, f);
+	mod_data.length=len;
+	fclose(f);
+	char msg[64];
+	music_module=module_load(&mod_data, msg);
+	if (music_module==NULL) {
+		printf("%s: %s\n", fname, msg);
+		exit(1);
+	}
+	music_replay=new_replay(music_module, SAMP_RATE, 0);
+	music_mixbuf=malloc(calculate_mix_buf_len(SAMP_RATE)*2);
+	music_mixbuf_left=0;
+	music_mixbuf_len=0;
+}
+
+
+void audio_cb(void* userdata, uint8_t* stream, int len) {
+	int pos=0;
+	if (len==0) return;
+	if (music_mixbuf_left!=0) {
+		pos=music_mixbuf_left;
+		memcpy(stream, &music_mixbuf[music_mixbuf_len-music_mixbuf_left], music_mixbuf_left);
+	}
+	music_mixbuf_left=0;
+	while (pos!=len) {
+		music_mixbuf_len=replay_get_audio(music_replay, (int*)music_mixbuf)*4;
+		int cplen=music_mixbuf_len;
+		if (pos+cplen>len) {
+			cplen=len-pos;
+			music_mixbuf_left=music_mixbuf_len-cplen;
+		}
+		memcpy(&stream[pos], music_mixbuf, cplen);
+		pos+=cplen;
+	}
+}
+
+
 
 int main(int argc, char** argv) {
 	cpu_addr_space_init();
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	load_mz("../data/TABLE2.PRG", 0x10000);
+	music_init("../data/TABLE1.MOD");
+	init_audio(SAMP_RATE, audio_cb);
+	load_mz("../data/TABLE1.PRG", 0x10000);
 	while(1) {
 		exec86(20000);
 		if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off);
@@ -338,7 +402,7 @@ int main(int argc, char** argv) {
 		if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off);
 //		printf("hor %d ver %d\n", vga_hor, vga_ver);
 //		cpu_addr_space_dump();
-		gfx_show(vram, pal, vga_ver, vga_hor*2);
+		gfx_show(vram, pal, vga_ver, 640);
 		gfx_tick();
 	}
 	return 0;
