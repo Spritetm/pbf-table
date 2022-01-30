@@ -85,7 +85,7 @@ static uint8_t /*verbose,*/ didbootstrap = 0;
 //static uint8_t debugmode, showcsip, /*verbose,*/ mouseemu;
 //uint8_t ethif;
 
-static void intcall86(uint8_t intnum);
+void intcall86(uint8_t intnum);
 
 #define StepIP(x)		cpu.ip += (x)
 #define getmem8(x, y)		read86(segbase(x) + (y))
@@ -1105,7 +1105,7 @@ static inline void op_grp5(void) {
 
 uint16_t cpu_last_int_seg, cpu_last_int_ip;
 
-static void intcall86(uint8_t intnum) {
+void intcall86(uint8_t intnum) {
 	cpu_last_int_seg = cpu.segregs[regcs];
 	cpu_last_int_ip  = cpu.saveip;	// LGB
 

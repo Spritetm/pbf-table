@@ -31,13 +31,34 @@ void gfx_init() {
 	texture=SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, TEX_WIDTH, TEX_HEIGHT);
 }
 
-void gfx_tick() {
+//Keep in sync with input_*
+static int keys[]={
+	0,
+	SDLK_DOWN,
+	SDLK_LSHIFT,
+	SDLK_RSHIFT,
+	SDLK_SPACE,
+	SDLK_F1,
+	SDLK_F2,
+	SDLK_F3,
+	SDLK_F4,
+	-1
+};
+
+int gfx_get_key() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		if (event.type==SDL_QUIT) {
 			exit(0);
+		} else if (event.type==SDL_KEYDOWN || event.type==SDL_KEYUP) {
+			for (int i=1; keys[i]>=0; i++) {
+				if (event.key.keysym.sym==keys[i]) {
+					return i|((event.type==SDL_KEYUP)?INPUT_RELEASE:0);
+				}
+			}
 		}
 	}
+	return -1;
 }
 
 void gfx_show(uint8_t *buf, uint32_t *pal, int w, int h) {
@@ -63,8 +84,8 @@ void init_audio(int samprate, audio_cb_t cb) {
 	SDL_AudioSpec want={0}, have={0};
 	want.freq=samprate;
 	want.format=AUDIO_S16SYS;
-	want.channels=2;
-	want.samples=1024*1;
+	want.channels=1;
+	want.samples=1024;
 	want.callback=cb;
 	audio_dev_id=SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
 	if (audio_dev_id<=0) {

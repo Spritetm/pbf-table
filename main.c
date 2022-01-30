@@ -9,14 +9,14 @@
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
-
 #define SAMP_RATE 44100
 struct module *music_module;
 struct replay *music_replay;
-uint8_t *music_mixbuf;
+int *music_mixbuf;
 int music_mixbuf_len;
 int music_mixbuf_left;
 
+int key_pressed=0;
 
 //from http://www.delorie.com/djgpp/doc/exe/
 typedef struct {
@@ -72,7 +72,26 @@ int vga_crtc_addr;
 int vga_hor=200, vga_ver=320;
 int vga_startaddr;
 
+static int keycode[]={
+	0,
+	0x50, //down
+	0x2A, //lshift
+	0x36, //rshift
+	0x39, //space
+	0x3b,
+	0x3c,
+	0x3d,
+	0x3e,
+};
+
 uint8_t portin(uint16_t port) {
+	if (port==0x60) {
+		int kc=keycode[key_pressed&0x7F];
+		if (key_pressed&INPUT_RELEASE) kc|=0x80;
+		key_pressed=0;
+		printf("Keycode %x\n", kc);
+		return kc;
+	}
 }
 
 uint8_t portin16(uint16_t port) {
@@ -128,7 +147,12 @@ void vga_mem_write(int addr, uint8_t data, mem_chunk_t *ch) {
 }
 
 uint8_t vga_mem_read(int addr, mem_chunk_t *ch) {
-	printf("VGA mem read unimplemented!\n");
+	int vaddr=addr-0xA0000;
+	//note: what if multiple bits in mask are enabled?
+	if (vga_mask&1) return vram[vaddr*4+0];
+	if (vga_mask&2) return vram[vaddr*4+1];
+	if (vga_mask&4) return vram[vaddr*4+2];
+	if (vga_mask&8) return vram[vaddr*4+3];
 }
 
 void init_vga_mem() {
@@ -359,28 +383,38 @@ void music_init(const char *fname) {
 		exit(1);
 	}
 	music_replay=new_replay(music_module, SAMP_RATE, 0);
-	music_mixbuf=malloc(calculate_mix_buf_len(SAMP_RATE)*2);
+	music_mixbuf=malloc(calculate_mix_buf_len(SAMP_RATE)*4);
 	music_mixbuf_left=0;
 	music_mixbuf_len=0;
 }
 
+static void fill_stream_buf(int16_t *stream, int *mixbuf, int len) {
+	for (int i=0; i<len; i++) {
+		int v=mixbuf[i];
+		if (v<-32768) v=-32768;
+		if (v>32767) v=32767;
+		stream[i]=v;
+	}
+}
 
-void audio_cb(void* userdata, uint8_t* stream, int len) {
+static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
+	uint16_t *stream=(uint16_t*)streambytes;
+	len=len/2; //because bytes -> words
 	int pos=0;
 	if (len==0) return;
 	if (music_mixbuf_left!=0) {
 		pos=music_mixbuf_left;
-		memcpy(stream, &music_mixbuf[music_mixbuf_len-music_mixbuf_left], music_mixbuf_left);
+		fill_stream_buf(stream, &music_mixbuf[music_mixbuf_len-music_mixbuf_left], music_mixbuf_left);
 	}
 	music_mixbuf_left=0;
 	while (pos!=len) {
-		music_mixbuf_len=replay_get_audio(music_replay, (int*)music_mixbuf)*4;
+		music_mixbuf_len=replay_get_audio(music_replay, (int*)music_mixbuf);
 		int cplen=music_mixbuf_len;
 		if (pos+cplen>len) {
 			cplen=len-pos;
 			music_mixbuf_left=music_mixbuf_len-cplen;
 		}
-		memcpy(&stream[pos], music_mixbuf, cplen);
+		fill_stream_buf(&stream[pos], music_mixbuf, cplen);
 		pos+=cplen;
 	}
 }
@@ -403,7 +437,13 @@ int main(int argc, char** argv) {
 //		printf("hor %d ver %d\n", vga_hor, vga_ver);
 //		cpu_addr_space_dump();
 		gfx_show(vram, pal, vga_ver, 640);
-		gfx_tick();
+		int key;
+		while ((key=gfx_get_key())>0) {
+			//wait till interrupts are enabled (not in int)
+			while (cpu.ifl==0) exec86(10);
+			key_pressed=key;
+			intcall86(9);
+		}
 	}
 	return 0;
 }
