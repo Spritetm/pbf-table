@@ -310,24 +310,24 @@ int hook_interrupt_call(uint8_t intr) {
 		}
 	} else if (intr==0x66 && (REG_AX&0xff)==8) {
 //		printf("audio: fill music buffer\n");
-		REG_AX=0;
+//1		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==16) {
 		printf("audio: play jingle in bx: 0x%X\n", REG_BX);
 		audio_lock();
 		replay_set_sequence_pos(music_replay, REG_BX);
 		audio_unlock();
-		REG_AX=0;
+//1		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==21) {
 		printf("audio: get driver, AL returns bitfield? Nosound.drv returns 0xa.\n");
 		//Note: bit 3 is tested for nosound
 //		REG_AX=10; //nosound driver returns this
-		REG_AX=0; //nosound driver returns this
+//1		REG_AX=0; //nosound driver returns this
 	} else if (intr==0x66 && (REG_AX&0xff)==22) {
 		printf("audio: ?get amount of data in buffers into ax?\n");
-		REG_AX=0;
+//1		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==16) {
 		printf("audio: force position in bx. ret al=old pos\n");
-		REG_AX=0;
+//1		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==17) {
 		printf("audio: play sound effect in cl,bl,dl at volume bh\n");
 		REG_AX=0;
