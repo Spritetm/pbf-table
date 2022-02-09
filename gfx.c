@@ -42,6 +42,7 @@ static int keys[]={
 	SDLK_F2,
 	SDLK_F3,
 	SDLK_F4,
+	SDLK_t,
 	-1
 };
 

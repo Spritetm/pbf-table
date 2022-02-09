@@ -6,6 +6,7 @@
 #define INPUT_F2 6
 #define INPUT_F3 7
 #define INPUT_F4 8
+#define INPUT_TEST 9
 #define INPUT_RELEASE 0x80
 
 void gfx_init();

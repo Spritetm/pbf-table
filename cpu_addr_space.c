@@ -25,7 +25,7 @@ static void write_ram(int addr, uint8_t data, mem_chunk_t *memch) {
 
 static void write_cow(int addr, uint8_t data, mem_chunk_t *memch) {
 	//Move to RAM and make into normal memory
-	printf("cpu_addr_space: mapping in new page for written cow chunk\n");
+//	printf("cpu_addr_space: mapping in new page for written cow chunk\n");
 	uint8_t *mem=malloc(CHUNK_SIZE);
 	memcpy(mem, memch->usr, CHUNK_SIZE);
 	memch->write_fn=write_ram;
@@ -36,7 +36,7 @@ static void write_cow(int addr, uint8_t data, mem_chunk_t *memch) {
 
 static void write_not_mapped(int addr, uint8_t data, mem_chunk_t *memch) {
 	//Map ram into address and do write.
-	printf("cpu_addr_space: mapping in new page for chunk\n");
+//	printf("cpu_addr_space: mapping in new page for chunk\n");
 	memch->read_fn=read_ram;
 	memch->write_fn=write_ram;
 	memch->usr=malloc(CHUNK_SIZE);
@@ -52,7 +52,7 @@ void cpu_addr_space_map_cb(int addr, int len, mem_write8_fn writefn, mem_read8_f
 	assert((addr%CHUNK_SIZE)==0);
 	int ch=addr/CHUNK_SIZE;
 	while (len>0) {
-		printf("Mapping chunk %d to cb\n", ch);
+//		printf("Mapping chunk %d to cb\n", ch);
 		assert(memory[ch].write_fn==write_not_mapped);
 		memory[ch].read_fn=readfn;
 		memory[ch].write_fn=writefn;
@@ -118,8 +118,7 @@ void cpu_addr_space_dump() {
 }
 
 
-//Hooks for emu
-
+//  Hooks for emu
 
 void write86(uint32_t addr32, uint8_t value) {
 	cpu_addr_space_write8(addr32, value);

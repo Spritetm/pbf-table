@@ -175,4 +175,6 @@ extern uint8_t portin16(uint16_t port);
 extern void portout(uint16_t port, uint8_t val);
 extern void portout16(uint16_t port, uint16_t val);
 
+void exec86_abort();
+
 #endif

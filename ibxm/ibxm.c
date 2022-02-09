@@ -81,6 +81,7 @@ struct replay {
 	int sample_rate, interpolation, global_vol;
 	int seq_pos, break_pos, row, next_row, tick;
 	int speed, tempo, pl_count, pl_chan;
+	int has_looped;
 	int *ramp_buf;
 	char **play_count;
 	struct channel *channels;
@@ -1812,6 +1813,7 @@ static void replay_row( struct replay *replay ) {
 				if( replay->pl_count < 0 ) {
 					replay->break_pos = note.param;
 					replay->next_row = 0;
+					if (replay->seq_pos >= note.param) replay->has_looped=1;
 				}
 				break;
 			case 0xD: case 0x83: /* Pattern Break.*/
@@ -1916,7 +1918,6 @@ void replay_set_sequence_pos( struct replay *replay, int pos ) {
 	replay->global_vol = module->default_gvol;
 	replay->speed = module->default_speed > 0 ? module->default_speed : 6;
 	replay->tempo = module->default_tempo > 0 ? module->default_tempo : 125;
-	printf("Speed %d tempo %d\n", replay->speed, replay->tempo);
 	replay->pl_count = replay->pl_chan = -1;
 	if( replay->play_count ) {
 		free( replay->play_count[ 0 ] );
@@ -2048,4 +2049,10 @@ int replay_get_audio( struct replay *replay, int *mix_buf ) {
 	replay_volume_ramp( replay, mix_buf, tick_len );
 	replay_tick( replay );
 	return tick_len;
+}
+
+int has_looped(struct replay *replay) {
+	int ret=replay->has_looped;
+	replay->has_looped=0;
+	return ret;
 }
