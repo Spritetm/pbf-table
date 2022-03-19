@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct __attribute__((packed)) {
 	uint16_t cs;
@@ -10,7 +11,7 @@ typedef struct __attribute__((packed)) {
 } trace_t;
 
 
-#define LOOPBUFLEN 100
+#define LOOPBUFLEN 500
 
 trace_t loopbuf[LOOPBUFLEN]={0};
 int loopbuf_pos;
@@ -48,7 +49,7 @@ int find_loop(trace_t *t) {
 	}
 	//If we're here, we're not in a loop.
 	if (loop_insns) {
-		printf("(Previous %d instructions loop for %d iterations.)\n", loop_len, loop_insns/loop_len);
+		printf("(Previous %d instructions loop for %d iterations.)\n", loop_len, (loop_insns/loop_len)+2);
 		loop_insns=0;
 	}
 	return 0;

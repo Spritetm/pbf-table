@@ -7,6 +7,9 @@
 #include "cpu_addr_space.h"
 #include "ibxm/ibxm.h"
 #include "hexdump.h"
+#include "trace.h"
+#include "scheduler.h"
+#include "load_exe.h"
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
@@ -19,29 +22,6 @@ int music_mixbuf_left;
 
 int key_pressed=0;
 
-//from http://www.delorie.com/djgpp/doc/exe/
-typedef struct {
-  uint16_t signature; /* == 0x5a4D */
-  uint16_t bytes_in_last_block;
-  uint16_t blocks_in_file;
-  uint16_t num_relocs;
-  uint16_t header_paragraphs;
-  uint16_t min_extra_paragraphs;
-  uint16_t max_extra_paragraphs;
-  uint16_t ss;
-  uint16_t sp;
-  uint16_t checksum;
-  uint16_t ip;
-  uint16_t cs;
-  uint16_t reloc_table_offset;
-  uint16_t overlay_number;
-} mz_hdr_t;
-
-typedef struct {
-  uint16_t offset;
-  uint16_t segment;
-} mz_reloc_t;
-
 #define REG_AX cpu.regs.wordregs[regax]
 #define REG_BX cpu.regs.wordregs[regbx]
 #define REG_CX cpu.regs.wordregs[regcx]
@@ -51,49 +31,6 @@ typedef struct {
 #define REG_ES cpu.segregs[reges]
 
 int load_mz(const char *exefile, int load_start_addr);
-
-int do_trace=0;
-#define DO_TRACE 0
-#if DO_TRACE
-typedef struct __attribute__((packed)) {
-	uint16_t cs;
-	uint16_t ip;
-	uint16_t ax;
-	uint16_t null;
-} trace_t;
-#define TRACECT (3*1024*1024*2ULL)
-trace_t *tracemem=NULL;
-int tracepos=0;
-//diff at 01B2 65A0
-void exec_cpu(int count) {
-	if (!tracemem) tracemem=calloc(TRACECT, sizeof(trace_t));
-	if (!do_trace) {
-		exec86(count);
-		return;
-	}
-	for (int i=0; i<count; i++) {
-		exec86(1);
-		tracemem[tracepos].cs=cpu.segregs[regcs];
-		tracemem[tracepos].ip=cpu.ip;
-		tracemem[tracepos].ax=REG_AX;
-		tracemem[tracepos].null=REG_DX;
-		tracepos++;
-		if (tracepos>=TRACECT) {
-			FILE *f=fopen("tracelog.bin", "w");
-			if (!f) {
-				perror("tracelog");
-			} else {
-				fwrite(tracemem, sizeof(trace_t), TRACECT, f);
-				fclose(f);
-			}
-			printf("Trace complete.\n");
-			exit(0);
-		}
-	}
-}
-#else
-#define exec_cpu(count) exec86(count)
-#endif
 
 
 void dump_regs() {
@@ -124,6 +61,8 @@ int vga_startaddr;
 uint8_t vga_gcregs[8];
 int vga_gcindex;
 uint8_t vga_latch[4];
+#define RETRACE_HBL 1
+#define RETRACE_VBL 2
 int in_retrace;
 
 static int keycode[]={
@@ -153,8 +92,10 @@ uint8_t portin(uint16_t port) {
 	} else if (port==0x3C5) {
 		//ignore, there's very little we use in there anyway
 	} else if (port==0x3DA) {
-//		printf("In retrace: %d\n", in_retrace);
-		return in_retrace?9:0;
+		int ret=0;
+		if (in_retrace) ret|=1;
+		if (in_retrace&RETRACE_VBL) in_retrace|=8;
+		return ret;
 	} else {
 		printf("Port read 0x%X\n", port);
 		static int n=0;
@@ -273,6 +214,7 @@ void init_intr_table() {
 	cpu_addr_space_map_cb(0xf0000, 2048, intr_table_writefn, intr_table_readfn, NULL);
 }
 
+int cb_raster_int_line=0;
 int cb_raster_seg=0, cb_raster_off=0;
 int cb_blank_seg=0, cb_blank_off=0;
 int cb_jingle_seg=0, cb_jingle_off=0;
@@ -354,7 +296,7 @@ void hook_interrupt_call(uint8_t intr) {
 		}
 	} else if (intr==0x66 && (REG_AX&0xff)==8) {
 //		printf("audio: fill music buffer\n");
-		REG_AX=0;  //Note: this seems to indicate *something*... but I have no clue how this affects the code? Super-odd.
+		REG_AX=0xff00;  //Note: this seems to indicate *something*... but I have no clue how this affects the code? Super-odd.
 //		dump_caller();
 	} else if (intr==0x66 && (REG_AX&0xff)==16) { 
 		//AL=FORCE POSITION, BX=THE POSITION ret: AL=OLD POSITION
@@ -368,7 +310,7 @@ void hook_interrupt_call(uint8_t intr) {
 		printf("audio: get driver caps, AL returns bitfield? Nosound.drv returns 0xa.\n");
 		//Note: bit 3 is tested for nosound
 //		REG_AX=10; //nosound driver returns this
-		REG_AX=0; //nosound driver returns this
+		REG_AX=8; //nosound driver returns this
 	} else if (intr==0x66 && (REG_AX&0xff)==22) {
 		printf("audio: ?get amount of data in buffers into dx.ax?\n");
 		REG_AX=0;
@@ -407,6 +349,7 @@ void hook_interrupt_call(uint8_t intr) {
 		printf("init raster interrupt to es:dx, raster in bl or cx?\n");
 		cb_raster_seg=REG_ES;
 		cb_raster_off=REG_DX;
+		cb_raster_int_line=REG_CX/2;
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==19) {
 		printf("init jingle handler to es:dx\n");
@@ -422,53 +365,6 @@ void hook_interrupt_call(uint8_t intr) {
 int cpu_hlt_handler() {
 	printf("CPU halted!\n");
 	exit(1);
-}
-
-//Note: Assumes the PSP starts 256 bytes before load_start_addr
-//Returns amount of data loaded.
-int load_mz(const char *exefile, int load_start_addr) {
-	FILE *f=fopen(exefile, "r");
-	if (!f) {
-		perror(exefile);
-		exit(1);
-	}
-	fseek(f, 0, SEEK_END);
-	int size=ftell(f);
-	fseek(f, 0, SEEK_SET);
-	uint8_t *exe=malloc(size);
-	fread(exe, 1, size, f);
-	fclose(f);
-	
-	mz_hdr_t *hdr=(mz_hdr_t*)exe;
-	if (hdr->signature!=0x5a4d) {
-		printf("Not an exe file!\n");
-		exit(1);
-	}
-	int exe_data_start = hdr->header_paragraphs*16;
-	printf("mz: data starts at %d\n", exe_data_start);
-	cpu_addr_space_map_cow(&exe[exe_data_start], load_start_addr, size-exe_data_start);
-
-	mz_reloc_t *relocs=(mz_reloc_t*)&exe[hdr->reloc_table_offset];
-	for (int i=0; i<hdr->num_relocs; i++) {
-		int adr=relocs[i].segment*0x10+relocs[i].offset;
-		int w=cpu_addr_space_read8(load_start_addr+adr);
-		w|=cpu_addr_space_read8(load_start_addr+adr+1)<<8;
-		w=w+(load_start_addr/0x10);
-		cpu_addr_space_write8(load_start_addr+adr, w&0xff);
-		cpu_addr_space_write8(load_start_addr+adr+1, w>>8);
-//		printf("Fixup at %x\n", load_start_addr+adr);
-	}
-	cpu.segregs[regds]=(load_start_addr-256)/0x10;
-	cpu.segregs[reges]=(load_start_addr-256)/0x10;
-	cpu.segregs[regcs]=(load_start_addr/0x10)+hdr->cs;
-	cpu.segregs[regss]=(load_start_addr/0x10)+hdr->ss;
-	cpu.regs.wordregs[regax]=0; //should be related to psp, but we don't emu that.
-	cpu.regs.wordregs[regsp]=hdr->sp;
-	cpu.ip=hdr->ip;
-	printf("Exe load done. CPU is set up to start at %04X:%04X (%06X).\n", cpu.segregs[regcs], cpu.ip, cpu.segregs[regcs]*0x10+cpu.ip);
-	for (int i=0; i<32; i++) printf("%02X ", cpu_addr_space_read8(cpu.segregs[regcs]*0x10+cpu.ip+i));
-	printf("\n");
-	return size-exe_data_start;
 }
 
 uint16_t force_callback(int seg, int off, int axval) {
@@ -492,7 +388,7 @@ uint16_t force_callback(int seg, int off, int axval) {
 	//Run the callback until we can see the return address has been popped; this
 	//indicates a ret happened.
 //	while (cpu.regs.wordregs[regsp]<=cpu_backup.regs.wordregs[regsp]) exec_cpu(1);
-	while (cpu.segregs[regcs]!=0 && cpu.ip!=0) exec_cpu(1);
+	while (cpu.segregs[regcs]!=0 || cpu.ip!=0) trace_run_cpu(1);
 	ret=cpu.regs.wordregs[regax];
 	//Restore registers
 	cpu=cpu_backup;
@@ -556,13 +452,58 @@ static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
 	}
 }
 
+
+int frame=0;
+int line=0;
+
+void hblank_end_cb() {
+	in_retrace&=~RETRACE_HBL;
+	line++;
+	if (line==cb_raster_int_line && cb_raster_seg!=0) {
+		force_callback(cb_raster_seg, cb_raster_off, 0);
+	}
+}
+
+void hblank_evt_cb() {
+	schedule_add(hblank_end_cb, 20, 0);
+	in_retrace|=RETRACE_HBL;
+}
+
+void vblank_end_cb() {
+	in_retrace&=~RETRACE_VBL;
+	frame++;
+	line=0;
+	gfx_show(vram, pal, vga_ver, 607);
+}
+
+void vblank_evt_cb() {
+	if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off, 0);
+	schedule_add(vblank_end_cb, (1000000/15000)*20, 0);
+	in_retrace|=RETRACE_VBL;
+}
+
 int dos_timer=0;
-void inc_dos_timer() {
+void pit_tick_evt_cb() {
 	dos_timer++;
 	cpu_addr_space_write8(0x46c, dos_timer);
 	cpu_addr_space_write8(0x46c, dos_timer>>8);
+	intcall86(8); //pit interrupt
 }
 
+void dowaitsyncs_bp() {
+	int adr=(REG_DS<<4)+REG_BX;
+	int d=cpu_addr_space_read8(adr)+(cpu_addr_space_read8(adr+1));
+	printf("Dowaitsyncs! [bx]=%04X, dx=%04X\n", d, REG_DX);
+}
+
+void test_bp() {
+	printf("Test bp!\n");
+		int w=cpu_addr_space_read8(0x60e80);
+		w|=cpu_addr_space_read8(0x60e80+1)<<8;
+		printf("%x\n", w);
+
+	dump_regs();
+}
 
 int main(int argc, char** argv) {
 	cpu_addr_space_init();
@@ -572,22 +513,27 @@ int main(int argc, char** argv) {
 	music_init("../data/TABLE1.MOD");
 	init_audio(SAMP_RATE, audio_cb);
 
+	//set up crtc address in bios area
 	cpu_addr_space_write8(0x463, 0xd4);
 	cpu_addr_space_write8(0x464, 0x3);
 
+	//schedule hblank/vblank and timer events
+	schedule_add(hblank_evt_cb,   1000000/15000, 1);
+	schedule_add(vblank_evt_cb,   1000000/72, 1);
+//	schedule_add(pit_tick_evt_cb, 1000000/18.5, 1);
 
-#if 1
+#if 0
 //	load_mz("../data_dos/PF.EXE", (640-20)*1024);
-//	while(!dos_program_exited) exec_cpu(1);
+//	while(!dos_program_exited) trace_run_cpu(1);
 //	dos_program_exited=0;
 	load_mz("../data_dos/NOSOUND.SDR", (640-10)*1024);
-	while(!dos_program_exited) exec_cpu(1);
+	while(!dos_program_exited) trace_run_cpu(1);
 	dos_program_exited=0;
 #endif
 
 #if 0
 	load_mz("../data_dos/NOSOUND.SDR", 0x10000);
-	while(!dos_program_exited) exec_cpu(1);
+	while(!dos_program_exited) trace_run_cpu(1);
 	cpu_addr_space_dump();
 	cpu_addr_dump_file("nosound.dump", 0x10000, 4*1024);
 	exit(0);
@@ -598,26 +544,17 @@ int main(int argc, char** argv) {
 //	uint8_t watch_mem[256];
 //	int watch_addr=0x1db6*0x10+0x2f00;
 
-	int frame=0;
+	trace_set_bp(0x562A, 0x5783, dowaitsyncs_bp);
+
+	trace_set_bp(0x60e8, 0x0000, test_bp);
+
+
 	while(1) {
-		exec_cpu(10000);
-		intcall86(8); //pit interrupt
-		inc_dos_timer();
-		if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off, 0);
-		exec_cpu(10000);
-		intcall86(8); //pit interrupt
-		inc_dos_timer();
-		in_retrace=1;
-		if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off, 0);
-		exec_cpu(10000);
-		intcall86(8); //pit interrupt
-		inc_dos_timer();
-		in_retrace=0;
-		frame++;
-		if (frame==100) do_trace=1;
-#ifdef DOTRACE
-		if (frame=60) {
-			while (cpu.ifl==0) exec_cpu(10);
+		schedule_run(1000000/72); //about 1 frame
+#ifdef DO_TRACE
+		if (frame==59) trace_enable(1);
+		if (frame==60) {
+			while (cpu.ifl==0) trace_run_cpu(10);
 			key_pressed=INPUT_F1;
 			intcall86(9);
 		}
@@ -625,7 +562,7 @@ int main(int argc, char** argv) {
 
 //		printf("hor %d ver %d start addr %d\n", vga_hor, vga_ver, vga_startaddr);
 //		cpu_addr_space_dump();
-		gfx_show(vram, pal, vga_ver, 607);
+#if 1
 		if (has_looped(music_replay)) {
 			printf("Music has looped. Doing jingle callback...\n");
 			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
@@ -634,7 +571,7 @@ int main(int argc, char** argv) {
 			printf("Jingle callback returned 0x%X\n", ret);
 			audio_unlock();
 		}
-
+#endif
 		int key;
 		while ((key=gfx_get_key())>0) {
 			if (key==INPUT_SPRING) {
@@ -650,7 +587,7 @@ int main(int argc, char** argv) {
 				printf("Jingle callback returned 0x%X\n", ret);
 			} else {
 				//wait till interrupts are enabled (not in int)
-				while (cpu.ifl==0) exec_cpu(10);
+				while (cpu.ifl==0) trace_run_cpu(10);
 				key_pressed=key;
 				intcall86(9);
 			}
