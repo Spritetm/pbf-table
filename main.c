@@ -61,9 +61,6 @@ int vga_startaddr;
 uint8_t vga_gcregs[8];
 int vga_gcindex;
 uint8_t vga_latch[4];
-#define RETRACE_HBL 1
-#define RETRACE_VBL 2
-int in_retrace;
 
 static int keycode[]={
 	0,
@@ -91,11 +88,6 @@ uint8_t portin(uint16_t port) {
 		return vga_gcregs[vga_gcindex];
 	} else if (port==0x3C5) {
 		//ignore, there's very little we use in there anyway
-	} else if (port==0x3DA) {
-		int ret=0;
-		if (in_retrace) ret|=1;
-		if (in_retrace&RETRACE_VBL) in_retrace|=8;
-		return ret;
 	} else {
 		printf("Port read 0x%X\n", port);
 		static int n=0;
@@ -224,7 +216,25 @@ int mouse_y=0;
 int mouse_btn=0;
 int mouse_down=0;
 
-int dos_program_exited=0;
+//this is what's indicated as 'togglaren' in the sources
+typedef struct __attribute__((packed)) {
+	uint8_t s_balls; //3 (0) or 5 (1). Default is 3
+	uint8_t s_angle; //high (0) or low (1). Default is high.
+	uint8_t s_scrolling; //medium (1), soft (2), hard (0). Default is medium.
+	uint8_t s_im; //ingame music, on (0) or off (1). Default is on.
+	uint8_t s_resolution; //reso, normal (0) or high (1). Default is normal.
+	uint8_t s_mode; //color mode, color (0) or mono (1). Default is color.
+} pref_type_t;
+
+
+static pref_type_t prefs={
+	.s_balls=0,
+	.s_angle=0,
+	.s_scrolling=1,
+	.s_im=0,
+	.s_resolution=0,
+	.s_mode=0
+};
 
 void hook_interrupt_call(uint8_t intr) {
 //	printf("Intr 0x%X\n", intr);
@@ -239,9 +249,6 @@ void hook_interrupt_call(uint8_t intr) {
 	} else if (intr==0x21 && (REG_AX>>8)==0xE) {
 		printf("Set default drive %c\n", 'A'+(REG_DX&0xff));
 		REG_AX=0x0E00+26;
-	} else if (intr==0x21 && (REG_AX>>8)==0x31) {
-		printf("Terminate and Stay Resident\n");
-		dos_program_exited=1;
 	} else if (intr==0x21 && (REG_AX>>8)==0x3B) {
 		printf("Set current dir\n");
 		cpu.cf=0;
@@ -254,10 +261,6 @@ void hook_interrupt_call(uint8_t intr) {
 	} else if (intr==0x21 && (REG_AX>>8)==0x3F) {
 		printf("Read from file\n");
 		cpu.cf=1;
-	} else if (intr==0x21 && (REG_AX>>8)==0x4B) {
-		printf("Exec program\n");
-		dos_program_exited=1;
-		cpu.cf=1;
 	} else if (intr==0x10 && (REG_AX>>8)==0) {
 		printf("Set video mode %x\n", REG_AX&0xff);
 	} else if (intr==0x65) {
@@ -266,9 +269,18 @@ void hook_interrupt_call(uint8_t intr) {
 		//ax=0xffff: save bl to bannumber
 		//ax=0x100: LOKALA TOGGLAREN => RESIDENTA TOGGLAREN
 		//ax=0x200: RESIDENTA TOGGLAREN => LOKALA TOGGLAREN
+		//(togglaren being the preferences, so save & load prefs
+		//from/to es:bx)
 		//ax00x12: text input
 		//others: simply return scan code without side effects
 		//Returns scan code in ax
+		if (REG_AX==0x200) {
+			int adr=(REG_ES<<4)+REG_BX;
+			uint8_t *p=(uint8_t*)&prefs;
+			for (int i=0; i<sizeof(prefs); i++) {
+				cpu_addr_space_write8(adr++, *p++);
+			}
+		}
 		REG_AX=0;
 		printf("Key handler\n");
 		dump_regs();
@@ -454,32 +466,20 @@ static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
 
 
 int frame=0;
-int line=0;
 
-void hblank_end_cb() {
-	in_retrace&=~RETRACE_HBL;
-	line++;
-	if (line==cb_raster_int_line && cb_raster_seg!=0) {
-		force_callback(cb_raster_seg, cb_raster_off, 0);
-	}
-}
-
-void hblank_evt_cb() {
-	schedule_add(hblank_end_cb, 20, 0);
-	in_retrace|=RETRACE_HBL;
+void midframe_cb() {
+	if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off, 0);
 }
 
 void vblank_end_cb() {
-	in_retrace&=~RETRACE_VBL;
 	frame++;
-	line=0;
 	gfx_show(vram, pal, vga_ver, 607);
+	schedule_add(midframe_cb, (1000000/15000)*cb_raster_int_line, 0);
 }
 
 void vblank_evt_cb() {
 	if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off, 0);
 	schedule_add(vblank_end_cb, (1000000/15000)*20, 0);
-	in_retrace|=RETRACE_VBL;
 }
 
 int dos_timer=0;
@@ -490,68 +490,22 @@ void pit_tick_evt_cb() {
 	intcall86(8); //pit interrupt
 }
 
-void dowaitsyncs_bp() {
-	int adr=(REG_DS<<4)+REG_BX;
-	int d=cpu_addr_space_read8(adr)+(cpu_addr_space_read8(adr+1));
-	printf("Dowaitsyncs! [bx]=%04X, dx=%04X\n", d, REG_DX);
-}
-
-void test_bp() {
-	printf("Test bp!\n");
-		int w=cpu_addr_space_read8(0x60e80);
-		w|=cpu_addr_space_read8(0x60e80+1)<<8;
-		printf("%x\n", w);
-
-	dump_regs();
-}
 
 int main(int argc, char** argv) {
 	cpu_addr_space_init();
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	music_init("../data/TABLE1.MOD");
+	music_init("../data/TABLE2.MOD");
 	init_audio(SAMP_RATE, audio_cb);
 
-	//set up crtc address in bios area
-	cpu_addr_space_write8(0x463, 0xd4);
-	cpu_addr_space_write8(0x464, 0x3);
-
-	//schedule hblank/vblank and timer events
-	schedule_add(hblank_evt_cb,   1000000/15000, 1);
 	schedule_add(vblank_evt_cb,   1000000/72, 1);
-//	schedule_add(pit_tick_evt_cb, 1000000/18.5, 1);
 
-#if 0
-//	load_mz("../data_dos/PF.EXE", (640-20)*1024);
-//	while(!dos_program_exited) trace_run_cpu(1);
-//	dos_program_exited=0;
-	load_mz("../data_dos/NOSOUND.SDR", (640-10)*1024);
-	while(!dos_program_exited) trace_run_cpu(1);
-	dos_program_exited=0;
-#endif
-
-#if 0
-	load_mz("../data_dos/NOSOUND.SDR", 0x10000);
-	while(!dos_program_exited) trace_run_cpu(1);
-	cpu_addr_space_dump();
-	cpu_addr_dump_file("nosound.dump", 0x10000, 4*1024);
-	exit(0);
-#endif
-
-	load_mz("../data/TABLE1.PRG", 0x10000);
-	
-//	uint8_t watch_mem[256];
-//	int watch_addr=0x1db6*0x10+0x2f00;
-
-	trace_set_bp(0x562A, 0x5783, dowaitsyncs_bp);
-
-	trace_set_bp(0x60e8, 0x0000, test_bp);
-
+	load_mz("../data/TABLE2.PRG", 0x10000);
 
 	while(1) {
 		schedule_run(1000000/72); //about 1 frame
-#ifdef DO_TRACE
+#if DO_TRACE
 		if (frame==59) trace_enable(1);
 		if (frame==60) {
 			while (cpu.ifl==0) trace_run_cpu(10);
