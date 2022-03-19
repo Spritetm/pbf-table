@@ -52,12 +52,62 @@ typedef struct {
 
 int load_mz(const char *exefile, int load_start_addr);
 
+int do_trace=0;
+#define DO_TRACE 0
+#if DO_TRACE
+typedef struct __attribute__((packed)) {
+	uint16_t cs;
+	uint16_t ip;
+	uint16_t ax;
+	uint16_t null;
+} trace_t;
+#define TRACECT (3*1024*1024*2ULL)
+trace_t *tracemem=NULL;
+int tracepos=0;
+//diff at 01B2 65A0
+void exec_cpu(int count) {
+	if (!tracemem) tracemem=calloc(TRACECT, sizeof(trace_t));
+	if (!do_trace) {
+		exec86(count);
+		return;
+	}
+	for (int i=0; i<count; i++) {
+		exec86(1);
+		tracemem[tracepos].cs=cpu.segregs[regcs];
+		tracemem[tracepos].ip=cpu.ip;
+		tracemem[tracepos].ax=REG_AX;
+		tracemem[tracepos].null=REG_DX;
+		tracepos++;
+		if (tracepos>=TRACECT) {
+			FILE *f=fopen("tracelog.bin", "w");
+			if (!f) {
+				perror("tracelog");
+			} else {
+				fwrite(tracemem, sizeof(trace_t), TRACECT, f);
+				fclose(f);
+			}
+			printf("Trace complete.\n");
+			exit(0);
+		}
+	}
+}
+#else
+#define exec_cpu(count) exec86(count)
+#endif
+
 
 void dump_regs() {
 	printf("AX %04X  SI %04X  ES %04X\n", cpu.regs.wordregs[regax], cpu.regs.wordregs[regsi], cpu.segregs[reges]);
 	printf("BX %04X  DI %04X  CS %04X\n", cpu.regs.wordregs[regbx], cpu.regs.wordregs[regdi], cpu.segregs[regcs]);
 	printf("CX %04X  SP %04X  SS %04X\n", cpu.regs.wordregs[regcx], cpu.regs.wordregs[regsp], cpu.segregs[regss]);
 	printf("DX %04X  BP %04X  DS %04X\n", cpu.regs.wordregs[regdx], cpu.regs.wordregs[regbp], cpu.segregs[regds]);
+}
+
+void dump_caller() {
+	int sp_addr=cpu.regs.wordregs[regsp]+cpu.segregs[regss]*0x10;
+	int seg=cpu_addr_space_read8(sp_addr+2)+(cpu_addr_space_read8(sp_addr+3)<<8);
+	int off=cpu_addr_space_read8(sp_addr)+(cpu_addr_space_read8(sp_addr+1)<<8);
+	printf("Caller: %04X:%04X\n", seg, off);
 }
 
 void timing() {
@@ -103,7 +153,8 @@ uint8_t portin(uint16_t port) {
 	} else if (port==0x3C5) {
 		//ignore, there's very little we use in there anyway
 	} else if (port==0x3DA) {
-		return in_retrace?9:1;
+//		printf("In retrace: %d\n", in_retrace);
+		return in_retrace?9:0;
 	} else {
 		printf("Port read 0x%X\n", port);
 		static int n=0;
@@ -195,39 +246,32 @@ void init_vga_mem() {
 	cpu_addr_space_map_cb(0xa0000, 0x10000, vga_mem_write, vga_mem_read, NULL);
 }
 
-int hook_interrupt_call(uint8_t intr);
+void hook_interrupt_call(uint8_t intr);
 
 void intr_table_writefn(int addr, uint8_t data, mem_chunk_t *ch) {
-	uint8_t *mem=(uint8_t*)ch->usr;
-	if (addr<1024) {
-		printf("Interrupt hook %x[%d] = 0x%X\n", addr/4, addr&3, data);
-		mem[addr]=data;
-	}
+	//this is supposed to be rom
+	printf("Aiee, write to rom segment? (Adr %05X, data %02X)\n", addr, data);
+	exit(1);
 }
 
 uint8_t intr_table_readfn(int addr, mem_chunk_t *ch) {
-	uint8_t *mem=(uint8_t*)ch->usr;
-	if (addr<1024) {
-		return mem[addr];
-	} else {
-		int intr=(addr-1024);
-		if (intr<256) hook_interrupt_call(intr);
-		return 0xcf; //IRET
-	}
+	int intr=(addr-0xf0000);
+	if (intr<256) hook_interrupt_call(intr);
+	return 0xcf; //IRET
 }
 
 void init_intr_table() {
-	//Set up interrupt table so each interrupt i vectors to address (1024+i)
-	uint8_t *ram=malloc(256*4);
+	//Set up interrupt table so each interrupt i vectors to address (F000:i)
 	for (int i=0; i<256; i++) {
-		ram[i*4+2]=0x40;
-		ram[i*4+3]=0;
-		ram[i*4+0]=i;
-		ram[i*4+1]=0;
+		cpu_addr_space_write8(i*4+2, 0x00);
+		cpu_addr_space_write8(i*4+3, 0xf0);
+		cpu_addr_space_write8(i*4+0, i);
+		cpu_addr_space_write8(i*4+1, 0);
 	}
-	cpu_addr_space_map_cb(0, 2048, intr_table_writefn, intr_table_readfn, ram);
+	//Set up some address space in ROM that the interrupt table vectors point at by default.
+	//We take a read from the first 256 addresses as an interrupt request for that irq.
+	cpu_addr_space_map_cb(0xf0000, 2048, intr_table_writefn, intr_table_readfn, NULL);
 }
-
 
 int cb_raster_seg=0, cb_raster_off=0;
 int cb_blank_seg=0, cb_blank_off=0;
@@ -240,7 +284,7 @@ int mouse_down=0;
 
 int dos_program_exited=0;
 
-int hook_interrupt_call(uint8_t intr) {
+void hook_interrupt_call(uint8_t intr) {
 //	printf("Intr 0x%X\n", intr);
 //	dump_regs();
 	if (intr==0x21 && (REG_AX>>8)==0x4A) {
@@ -310,24 +354,24 @@ int hook_interrupt_call(uint8_t intr) {
 		}
 	} else if (intr==0x66 && (REG_AX&0xff)==8) {
 //		printf("audio: fill music buffer\n");
-//1		REG_AX=0;
-	} else if (intr==0x66 && (REG_AX&0xff)==16) {
+		REG_AX=0;  //Note: this seems to indicate *something*... but I have no clue how this affects the code? Super-odd.
+//		dump_caller();
+	} else if (intr==0x66 && (REG_AX&0xff)==16) { 
+		//AL=FORCE POSITION, BX=THE POSITION ret: AL=OLD POSITION
 		printf("audio: play jingle in bx: 0x%X\n", REG_BX);
 		audio_lock();
+		int old_pos=replay_get_sequence_pos(music_replay);
 		replay_set_sequence_pos(music_replay, REG_BX);
 		audio_unlock();
-//1		REG_AX=0;
+		REG_AX=old_pos;
 	} else if (intr==0x66 && (REG_AX&0xff)==21) {
-		printf("audio: get driver, AL returns bitfield? Nosound.drv returns 0xa.\n");
+		printf("audio: get driver caps, AL returns bitfield? Nosound.drv returns 0xa.\n");
 		//Note: bit 3 is tested for nosound
 //		REG_AX=10; //nosound driver returns this
-//1		REG_AX=0; //nosound driver returns this
+		REG_AX=0; //nosound driver returns this
 	} else if (intr==0x66 && (REG_AX&0xff)==22) {
-		printf("audio: ?get amount of data in buffers into ax?\n");
-//1		REG_AX=0;
-	} else if (intr==0x66 && (REG_AX&0xff)==16) {
-		printf("audio: force position in bx. ret al=old pos\n");
-//1		REG_AX=0;
+		printf("audio: ?get amount of data in buffers into dx.ax?\n");
+		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==17) {
 		printf("audio: play sound effect in cl,bl,dl at volume bh\n");
 		REG_AX=0;
@@ -373,7 +417,6 @@ int hook_interrupt_call(uint8_t intr) {
 		printf("Unhandled interrupt 0x%X\n", intr);
 		dump_regs();
 	}
-	return 0;
 }
 
 int cpu_hlt_handler() {
@@ -428,7 +471,7 @@ int load_mz(const char *exefile, int load_start_addr) {
 	return size-exe_data_start;
 }
 
-uint16_t force_callback(int seg, int off) {
+uint16_t force_callback(int seg, int off, int axval) {
 	uint16_t ret;
 	struct cpu cpu_backup;
 	//Save existing registers
@@ -436,6 +479,7 @@ uint16_t force_callback(int seg, int off) {
 	//set cs:ip to address of callback
 	cpu.segregs[regcs]=seg;
 	cpu.ip=off;
+	cpu.regs.wordregs[regax]=axval;
 	//increase sp by four, as if there was a call that pushed the address of the calling function
 	//on the stack
 	cpu.regs.wordregs[regsp]=cpu.regs.wordregs[regsp]-4;
@@ -447,8 +491,8 @@ uint16_t force_callback(int seg, int off) {
 
 	//Run the callback until we can see the return address has been popped; this
 	//indicates a ret happened.
-//	while (cpu.regs.wordregs[regsp]<=cpu_backup.regs.wordregs[regsp]) exec86(1);
-	while (cpu.segregs[regcs]!=0 && cpu.ip!=0) exec86(1);
+//	while (cpu.regs.wordregs[regsp]<=cpu_backup.regs.wordregs[regsp]) exec_cpu(1);
+	while (cpu.segregs[regcs]!=0 && cpu.ip!=0) exec_cpu(1);
 	ret=cpu.regs.wordregs[regax];
 	//Restore registers
 	cpu=cpu_backup;
@@ -512,6 +556,12 @@ static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
 	}
 }
 
+int dos_timer=0;
+void inc_dos_timer() {
+	dos_timer++;
+	cpu_addr_space_write8(0x46c, dos_timer);
+	cpu_addr_space_write8(0x46c, dos_timer>>8);
+}
 
 
 int main(int argc, char** argv) {
@@ -522,38 +572,63 @@ int main(int argc, char** argv) {
 	music_init("../data/TABLE1.MOD");
 	init_audio(SAMP_RATE, audio_cb);
 
+	cpu_addr_space_write8(0x463, 0xd4);
+	cpu_addr_space_write8(0x464, 0x3);
 
-#if 0
-	load_mz("../data_dos/PF.EXE", (640-20)*1024);
-	while(!dos_program_exited) exec86(1);
-	dos_program_exited=0;
+
+#if 1
+//	load_mz("../data_dos/PF.EXE", (640-20)*1024);
+//	while(!dos_program_exited) exec_cpu(1);
+//	dos_program_exited=0;
 	load_mz("../data_dos/NOSOUND.SDR", (640-10)*1024);
-	while(!dos_program_exited) exec86(1);
+	while(!dos_program_exited) exec_cpu(1);
 	dos_program_exited=0;
 #endif
-	load_mz("../data_dos/TABLE1.PRG", 0x10000);
+
+#if 0
+	load_mz("../data_dos/NOSOUND.SDR", 0x10000);
+	while(!dos_program_exited) exec_cpu(1);
+	cpu_addr_space_dump();
+	cpu_addr_dump_file("nosound.dump", 0x10000, 4*1024);
+	exit(0);
+#endif
+
+	load_mz("../data/TABLE1.PRG", 0x10000);
 	
 //	uint8_t watch_mem[256];
 //	int watch_addr=0x1db6*0x10+0x2f00;
 
+	int frame=0;
 	while(1) {
-		exec86(200000);
-//		intcall86(8); //pit interrupt
-		if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off);
-		exec86(200000);
-//		intcall86(8); //pit interrupt
-//		in_retrace=1;
-		if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off);
-//		exec86(100000);
-//		intcall86(8); //pit interrupt
-
+		exec_cpu(10000);
+		intcall86(8); //pit interrupt
+		inc_dos_timer();
+		if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off, 0);
+		exec_cpu(10000);
+		intcall86(8); //pit interrupt
+		inc_dos_timer();
+		in_retrace=1;
+		if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off, 0);
+		exec_cpu(10000);
+		intcall86(8); //pit interrupt
+		inc_dos_timer();
+		in_retrace=0;
+		frame++;
+		if (frame==100) do_trace=1;
+#ifdef DOTRACE
+		if (frame=60) {
+			while (cpu.ifl==0) exec_cpu(10);
+			key_pressed=INPUT_F1;
+			intcall86(9);
+		}
+#endif
 
 //		printf("hor %d ver %d start addr %d\n", vga_hor, vga_ver, vga_startaddr);
 //		cpu_addr_space_dump();
 		gfx_show(vram, pal, vga_ver, 607);
 		if (has_looped(music_replay)) {
 			printf("Music has looped. Doing jingle callback...\n");
-			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off);
+			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
 			audio_lock();
 			replay_set_sequence_pos(music_replay, ret&0xff);
 			printf("Jingle callback returned 0x%X\n", ret);
@@ -568,14 +643,14 @@ int main(int argc, char** argv) {
 				mouse_down=0;
 				mouse_btn=1;
 			} else if (key==INPUT_TEST) {
-				uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off);
+				uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
 				audio_lock();
 				replay_set_sequence_pos(music_replay, ret&0xff);
 				audio_unlock();
 				printf("Jingle callback returned 0x%X\n", ret);
 			} else {
 				//wait till interrupts are enabled (not in int)
-				while (cpu.ifl==0) exec86(10);
+				while (cpu.ifl==0) exec_cpu(10);
 				key_pressed=key;
 				intcall86(9);
 			}

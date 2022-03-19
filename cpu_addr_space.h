@@ -17,3 +17,4 @@ void cpu_addr_space_init();
 uint8_t cpu_addr_space_read8(int addr);
 void cpu_addr_space_write8(int addr, uint8_t data);
 void cpu_addr_space_dump();
+void cpu_addr_dump_file(const char *file, int off, int len);

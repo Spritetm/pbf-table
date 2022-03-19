@@ -93,7 +93,7 @@ void init_audio(int samprate, audio_cb_t cb) {
 		printf("Can't initialize sdl audio\n");
 		exit(1);
 	}
-	SDL_PauseAudioDevice(audio_dev_id, 0);
+	SDL_PauseAudioDevice(audio_dev_id, 1);
 }
 
 void audio_lock() {

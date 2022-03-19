@@ -1,6 +1,6 @@
 OBJS=cpu.o main.o gfx.o cpu_addr_space.o ibxm/ibxm.o hexdump.o
 TARGET=emu
-CFLAGS=-Og -ggdb `pkg-config --cflags sdl2`
+CFLAGS=-O0 -ggdb `pkg-config --cflags sdl2`
 LDFLAGS=`pkg-config --libs sdl2`
 
 $(TARGET): $(OBJS)
@@ -8,3 +8,6 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -f $(OBJS) $(TARGET)
+
+read_trace: read_trace.c
+	$(CC) -o $@ $^

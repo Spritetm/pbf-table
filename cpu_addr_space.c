@@ -136,3 +136,15 @@ uint8_t read86(uint32_t addr32) {
 uint16_t readw86(uint32_t addr32) {
 	return read86(addr32)+(read86(addr32+1)*0x100);
 }
+
+void cpu_addr_dump_file(const char *file, int off, int len) {
+	uint8_t *mem=malloc(len);
+	for (int i=0; i<len; i++) mem[i]=cpu_addr_space_read8(off+i);
+	FILE *f=fopen(file, "w");
+	if (!f) {
+		perror(file);
+		return;
+	}
+	fwrite(mem, len, 1, f);
+	fclose(f);
+}

@@ -96,6 +96,9 @@ int replay_calculate_duration( struct replay *replay );
 int replay_seek( struct replay *replay, int sample_pos );
 /* Set the pattern in the sequence to play. The tempo is reset to the default. */
 void replay_set_sequence_pos( struct replay *replay, int pos );
+
+int replay_get_sequence_pos( struct replay *replay );
+
 /* Generates audio and returns the number of stereo samples written into mix_buf. */
 int replay_get_audio( struct replay *replay, int *mix_buf );
 /* Returns the length of the output buffer required by replay_get_audio(). */

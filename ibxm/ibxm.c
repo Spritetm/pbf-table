@@ -1905,6 +1905,10 @@ static int module_init_play_count( struct module *module, char **play_count ) {
 	return len;
 }
 
+int replay_get_sequence_pos( struct replay *replay ) {
+	return replay->seq_pos;
+}
+
 /* Set the pattern in the sequence to play. The tempo is reset to the default. */
 void replay_set_sequence_pos( struct replay *replay, int pos ) {
 	int idx;

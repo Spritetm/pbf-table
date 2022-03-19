@@ -1,2 +1,4 @@
 emu
 *.o
+read_trace
+tracelog.bin
