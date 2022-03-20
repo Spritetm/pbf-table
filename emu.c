@@ -10,6 +10,7 @@
 #include "trace.h"
 #include "scheduler.h"
 #include "load_exe.h"
+#include "mmap_file.h"
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
@@ -322,12 +323,15 @@ void hook_interrupt_call(uint8_t intr) {
 		printf("audio: get driver caps, AL returns bitfield? Nosound.drv returns 0xa.\n");
 		//Note: bit 3 is tested for nosound
 //		REG_AX=10; //nosound driver returns this
-		REG_AX=8; //nosound driver returns this
+		REG_AX=8;
 	} else if (intr==0x66 && (REG_AX&0xff)==22) {
 		printf("audio: ?get amount of data in buffers into dx.ax?\n");
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==17) {
-		printf("audio: play sound effect in cl,bl,dl at volume bh\n");
+		printf("audio: play sound effect in cl,bl,dl at volume bh: effect %d, %d, %d vol %d\n", 
+			REG_CX&0xff, REG_BX&0xff, REG_DX&0xff, REG_BX>>8);
+			//sample, pitch?, channel?, volume (0-64)
+		sfxchan_play(music_replay, REG_CX&0xff, REG_BX&0xff, REG_BX>>8);
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==18) {
 		int adr=(REG_DS*0x10)+REG_DX;
@@ -407,30 +411,21 @@ uint16_t force_callback(int seg, int off, int axval) {
 	return ret;
 }
 
-void music_init(const char *fname) {
-	FILE *f=fopen(fname, "r");
-	if (!f) {
-		perror(fname);
-		exit(1);
-	}
-	fseek(f, 0, SEEK_END);
-	int len=ftell(f);
-	fseek(f, 0, SEEK_SET);
+int music_init(const char *fname) {
 	struct data mod_data;
-	mod_data.buffer=malloc(len);
-	fread(mod_data.buffer, 1, len, f);
-	mod_data.length=len;
-	fclose(f);
+	mod_data.length=mmap_file(fname, (void**)&mod_data.buffer);
+
 	char msg[64];
 	music_module=module_load(&mod_data, msg);
 	if (music_module==NULL) {
 		printf("%s: %s\n", fname, msg);
-		exit(1);
+		return 0;
 	}
 	music_replay=new_replay(music_module, SAMP_RATE, 0);
 	music_mixbuf=malloc(calculate_mix_buf_len(SAMP_RATE)*4);
 	music_mixbuf_left=0;
 	music_mixbuf_len=0;
+	return 1;
 }
 
 static void fill_stream_buf(int16_t *stream, int *mixbuf, int len) {
@@ -496,12 +491,12 @@ int main(int argc, char** argv) {
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	music_init("../data/TABLE2.MOD");
+	music_init("TABLE2.MOD");
 	init_audio(SAMP_RATE, audio_cb);
 
 	schedule_add(vblank_evt_cb,   1000000/72, 1);
 
-	load_mz("../data/TABLE2.PRG", 0x10000);
+	load_mz("TABLE2.PRG", 0x10000);
 
 	while(1) {
 		schedule_run(1000000/72); //about 1 frame
@@ -516,7 +511,6 @@ int main(int argc, char** argv) {
 
 //		printf("hor %d ver %d start addr %d\n", vga_hor, vga_ver, vga_startaddr);
 //		cpu_addr_space_dump();
-#if 1
 		if (has_looped(music_replay)) {
 			printf("Music has looped. Doing jingle callback...\n");
 			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
@@ -525,7 +519,6 @@ int main(int argc, char** argv) {
 			printf("Jingle callback returned 0x%X\n", ret);
 			audio_unlock();
 		}
-#endif
 		int key;
 		while ((key=gfx_get_key())>0) {
 			if (key==INPUT_SPRING) {

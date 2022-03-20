@@ -85,6 +85,7 @@ struct replay {
 	int *ramp_buf;
 	char **play_count;
 	struct channel *channels;
+	struct channel sfxchan;
 	struct module *module;
 };
 
@@ -1880,6 +1881,7 @@ static int replay_tick( struct replay *replay ) {
 		for( idx = 0; idx < num_channels; idx++ ) {
 			channel_tick( &replay->channels[ idx ] );
 		}
+		channel_tick( &replay->sfxchan );
 	}
 	if( replay->play_count && replay->play_count[ 0 ] ) {
 		count = replay->play_count[ replay->seq_pos ][ replay->row ] - 1;
@@ -1935,6 +1937,7 @@ void replay_set_sequence_pos( struct replay *replay, int pos ) {
 	for( idx = 0; idx < module->num_channels; idx++ ) {
 		channel_init( &replay->channels[ idx ], replay, idx );
 	}
+	channel_init( &replay->sfxchan, replay,  module->num_channels );
 	memset( replay->ramp_buf, 0, 128 * sizeof( int ) );
 	replay_tick( replay );
 }
@@ -2001,6 +2004,8 @@ int replay_seek( struct replay *replay, int sample_pos ) {
 			channel_update_sample_idx( &replay->channels[ idx ],
 				tick_len * 2, replay->sample_rate * 2 );
 		}
+		channel_update_sample_idx( &replay->sfxchan,
+				tick_len * 2, replay->sample_rate * 2 );
 		current_pos += tick_len;
 		replay_tick( replay );
 		tick_len = calculate_tick_len( replay->tempo, replay->sample_rate );
@@ -2049,6 +2054,10 @@ int replay_get_audio( struct replay *replay, int *mix_buf ) {
 			replay->sample_rate * 2, replay->interpolation );
 		channel_update_sample_idx( channel, tick_len * 2, replay->sample_rate * 2 );
 	}
+	channel_resample( &replay->sfxchan, mix_buf, 0, ( tick_len + 65 ) * 2,
+			replay->sample_rate * 2, replay->interpolation );
+	channel_update_sample_idx( &replay->sfxchan, tick_len * 2, replay->sample_rate * 2 );
+
 	downsample( mix_buf, tick_len + 64 );
 	replay_volume_ramp( replay, mix_buf, tick_len );
 	replay_tick( replay );
@@ -2059,4 +2068,13 @@ int has_looped(struct replay *replay) {
 	int ret=replay->has_looped;
 	replay->has_looped=0;
 	return ret;
+}
+
+void sfxchan_play(struct replay *replay, int sample, int key, int volume) {
+	replay->sfxchan.note.key=key;
+	replay->sfxchan.note.instrument=sample;
+	replay->sfxchan.note.volume=(volume==0)?63:volume;
+	replay->sfxchan.note.effect=0;
+	replay->sfxchan.note.param=0;
+	channel_trigger(&replay->sfxchan);
 }

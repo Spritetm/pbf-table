@@ -105,3 +105,5 @@ int replay_get_audio( struct replay *replay, int *mix_buf );
 int calculate_mix_buf_len( int sample_rate );
 
 int has_looped(struct replay *replay);
+
+void sfxchan_play(struct replay *replay, int sample, int key, int volume);

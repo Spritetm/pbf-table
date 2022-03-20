@@ -4,6 +4,7 @@
 #include <string.h>
 #include "cpu.h"
 #include "cpu_addr_space.h"
+#include "mmap_file.h"
 
 //from http://www.delorie.com/djgpp/doc/exe/
 typedef struct {
@@ -31,22 +32,14 @@ typedef struct {
 //Note: Assumes the PSP starts 256 bytes before load_start_addr
 //Returns amount of data loaded.
 int load_mz(const char *exefile, int load_start_addr) {
-	FILE *f=fopen(exefile, "r");
-	if (!f) {
-		perror(exefile);
-		exit(1);
-	}
-	fseek(f, 0, SEEK_END);
-	int size=ftell(f);
-	fseek(f, 0, SEEK_SET);
-	uint8_t *exe=malloc(size);
-	fread(exe, 1, size, f);
-	fclose(f);
+	uint8_t *exe;
+	int size=mmap_file(exefile, &exe);
 	
 	mz_hdr_t *hdr=(mz_hdr_t*)exe;
 	if (hdr->signature!=0x5a4d) {
 		printf("Not an exe file!\n");
-		exit(1);
+		munmap_file(exe);
+		return -1;
 	}
 	int exe_data_start = hdr->header_paragraphs*16;
 	printf("mz: data starts at %d\n", exe_data_start);
