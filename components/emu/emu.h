@@ -1,0 +1,1 @@
+void emu_run();

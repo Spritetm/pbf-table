@@ -1,8 +1,6 @@
-#Note: this is for the ESP32 build.
+# The following lines of boilerplate have to be in your project's CMakeLists
+# in this exact order for cmake to work correctly
+cmake_minimum_required(VERSION 3.5)
 
-
-idf_component_register(SRCS emu.c cpu.c cpu_addr_space.c load_exe.c scheduler.c trace.c ibxm/ibxm.c
-        REQUIRES log
-        INCLUDE_DIRS "." "ibxm" )
-
-target_compile_options(${COMPONENT_LIB} PRIVATE -DPROJECT_NAME="${CMAKE_PROJECT_NAME}")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(spi_master)

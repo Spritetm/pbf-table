@@ -11,7 +11,8 @@ typedef struct {
 #define MAX_SCHED_EVENTS 20
 
 #define GRAN_EVENT_US 10
-#define TICKS_PER_GRAN_EVENT 30
+//Note: given that an 8086 does, like, 4 cycles per clock, an 8MHz one would have 20 ticks/10us.
+#define TICKS_PER_GRAN_EVENT 5
 
 static schedule_event_t schedule[MAX_SCHED_EVENTS];
 

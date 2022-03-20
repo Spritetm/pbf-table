@@ -1,6 +1,6 @@
 
 #define DO_TRACE 0
-#define USE_BPS 1
+#define USE_BPS 0
 
 typedef void (trace_bp_cb_t)(void);
 

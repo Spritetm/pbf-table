@@ -32,13 +32,13 @@ typedef struct {
 //Note: Assumes the PSP starts 256 bytes before load_start_addr
 //Returns amount of data loaded.
 int load_mz(const char *exefile, int load_start_addr) {
-	uint8_t *exe;
-	int size=mmap_file(exefile, &exe);
+	const uint8_t *exe;
+	int size=mmap_file(exefile, (const void**)&exe);
 	
 	mz_hdr_t *hdr=(mz_hdr_t*)exe;
 	if (hdr->signature!=0x5a4d) {
 		printf("Not an exe file!\n");
-		munmap_file(exe);
+		munmap_file((const void*)exe);
 		return -1;
 	}
 	int exe_data_start = hdr->header_paragraphs*16;

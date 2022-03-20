@@ -60,7 +60,6 @@ static const uint8_t parity[0x100] = {
 struct cpu cpu;
 
 
-uint8_t readonly[RAM_SIZE];
 //static uint8_t hltstate = 0;
 //static uint8_t /*opcode,*/ cpu.segoverride /*, reptype */;
 //uint16_t cpu.segregs[4];
@@ -81,9 +80,6 @@ uint64_t totalexec;
 union _bytewordregs_ regs;
 
 uint8_t running = 1;
-static uint8_t /*verbose,*/ didbootstrap = 0;
-//static uint8_t debugmode, showcsip, /*verbose,*/ mouseemu;
-//uint8_t ethif;
 
 void intcall86(uint8_t intnum);
 
@@ -1307,12 +1303,7 @@ void exec86(uint32_t execloops) {
 		docontinue = 0;
 		firstip = cpu.ip;
 
-		if ((cpu.segregs[regcs] == 0xF000) && (cpu.ip == 0xE066))
-			didbootstrap =
-			    0; // detect if we hit the BIOS entry point to clear
-			       // didbootstrap because we've rebooted
-
-		uint8_t opcode;
+		uint8_t opcode=00;
 		while (!docontinue) {
 			cpu.segregs[regcs] = cpu.segregs[regcs] & 0xFFFF;
 			cpu.ip = cpu.ip & 0xFFFF;

@@ -14,7 +14,7 @@
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
-#define SAMP_RATE 44100
+#define SAMP_RATE 22050
 struct module *music_module;
 struct replay *music_replay;
 int *music_mixbuf;
@@ -51,7 +51,7 @@ void dump_caller() {
 void timing() {
 }
 
-uint8_t vram[256*1024];
+uint8_t *vram;
 uint32_t pal[255];
 int vga_seq_addr;
 int vga_mask;
@@ -99,6 +99,7 @@ uint8_t portin(uint16_t port) {
 
 uint8_t portin16(uint16_t port) {
 	printf("16-bit port read 0x%X\n", port);
+	return 0;
 }
 
 
@@ -174,9 +175,11 @@ uint8_t vga_mem_read(int addr, mem_chunk_t *ch) {
 	if (vga_mask&2) return vram[vaddr*4+1];
 	if (vga_mask&4) return vram[vaddr*4+2];
 	if (vga_mask&8) return vram[vaddr*4+3];
+	return 0;
 }
 
 void init_vga_mem() {
+	vram=malloc(256*1024);
 	cpu_addr_space_map_cb(0xa0000, 0x10000, vga_mem_write, vga_mem_read, NULL);
 }
 
@@ -185,7 +188,6 @@ void hook_interrupt_call(uint8_t intr);
 void intr_table_writefn(int addr, uint8_t data, mem_chunk_t *ch) {
 	//this is supposed to be rom
 	printf("Aiee, write to rom segment? (Adr %05X, data %02X)\n", addr, data);
-	exit(1);
 }
 
 uint8_t intr_table_readfn(int addr, mem_chunk_t *ch) {
@@ -380,7 +382,7 @@ void hook_interrupt_call(uint8_t intr) {
 
 int cpu_hlt_handler() {
 	printf("CPU halted!\n");
-	exit(1);
+	return 0;
 }
 
 uint16_t force_callback(int seg, int off, int axval) {
@@ -413,7 +415,7 @@ uint16_t force_callback(int seg, int off, int axval) {
 
 int music_init(const char *fname) {
 	struct data mod_data;
-	mod_data.length=mmap_file(fname, (void**)&mod_data.buffer);
+	mod_data.length=mmap_file(fname, (const void**)&mod_data.buffer);
 
 	char msg[64];
 	music_module=module_load(&mod_data, msg);
@@ -438,15 +440,17 @@ static void fill_stream_buf(int16_t *stream, int *mixbuf, int len) {
 }
 
 static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
-	uint16_t *stream=(uint16_t*)streambytes;
+	int16_t *stream=(int16_t*)streambytes;
 	len=len/2; //because bytes -> words
 	int pos=0;
 	if (len==0) return;
+	//if there's still music in the buffer, use that
 	if (music_mixbuf_left!=0) {
 		pos=music_mixbuf_left;
 		fill_stream_buf(stream, &music_mixbuf[music_mixbuf_len-music_mixbuf_left], music_mixbuf_left);
 	}
 	music_mixbuf_left=0;
+	//Refull until music buffer is full.
 	while (pos!=len) {
 		music_mixbuf_len=replay_get_audio(music_replay, (int*)music_mixbuf);
 		int cplen=music_mixbuf_len;
@@ -468,7 +472,7 @@ void midframe_cb() {
 
 void vblank_end_cb() {
 	frame++;
-	gfx_show(vram, pal, vga_ver, 607);
+	gfx_show(vram, pal, vga_ver, 607, vga_startaddr/320);
 	schedule_add(midframe_cb, (1000000/15000)*cb_raster_int_line, 0);
 }
 
@@ -486,17 +490,17 @@ void pit_tick_evt_cb() {
 }
 
 
-int main(int argc, char** argv) {
+void emu_run() {
 	cpu_addr_space_init();
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	music_init("TABLE2.MOD");
-	init_audio(SAMP_RATE, audio_cb);
+	music_init("TABLE1.MOD");
+	audio_init(SAMP_RATE, audio_cb);
 
-	schedule_add(vblank_evt_cb,   1000000/72, 1);
+	schedule_add(vblank_evt_cb, 1000000/72, 1);
 
-	load_mz("TABLE2.PRG", 0x10000);
+	load_mz("TABLE1.PRG", 0x10000);
 
 	while(1) {
 		schedule_run(1000000/72); //about 1 frame
@@ -540,5 +544,5 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
-	return 0;
+	return;
 }

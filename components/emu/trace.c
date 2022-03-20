@@ -30,7 +30,7 @@ void trace_set_bp(int cs, int ip, trace_bp_cb_t cb) {
 }
 
 #else
-static void exec86_bp(count) {
+static void exec86_bp(int count) {
 	exec86(count);
 }
 

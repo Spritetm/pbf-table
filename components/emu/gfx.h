@@ -11,9 +11,9 @@
 
 void gfx_init();
 int gfx_get_key();
-void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w);
+void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll);
 
 typedef void(*audio_cb_t)(void* userdata, uint8_t* stream, int len);
-void init_audio(int samprate, audio_cb_t cb);
+void audio_init(int samprate, audio_cb_t cb);
 void audio_lock();
 void audio_unlock();

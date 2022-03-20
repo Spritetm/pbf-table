@@ -25,16 +25,16 @@ const file_t available_files[NO_FILES]={
 };
 
 typedef struct {
-	void *adr;
+	const void *adr;
 	spi_flash_mmap_handle_t mmap_handle;
 } file_mmap_t;
 
-static file_mmap_t mmaped_files[NO_FILES]={0}
+static file_mmap_t mmaped_files[NO_FILES]={0};
 
-int mmap_file(const char *filename, void **mem) {
+int mmap_file(const char *filename, const void **mem) {
 	//First, find file.
 	int fnum=0;
-	while (fnum<NO_FILES && strcasecmp(filename, available_files[fnum])!=0) fnum++;
+	while (fnum<NO_FILES && strcasecmp(filename, available_files[fnum].name)!=0) fnum++;
 	if (fnum>=NO_FILES) {
 		//Not found.
 		*mem=NULL;
@@ -46,6 +46,8 @@ int mmap_file(const char *filename, void **mem) {
 		return available_files[fnum].size;
 	}
 	//Need to mmap the partition.
+	const esp_partition_t *part;
+	part=esp_partition_find_first(available_files[fnum].type, available_files[fnum].subtype, NULL);
 	esp_partition_mmap(part, 0, available_files[fnum].size, SPI_FLASH_MMAP_DATA, 
 						&mmaped_files[fnum].adr, &mmaped_files[fnum].mmap_handle);
 	*mem=mmaped_files[fnum].adr;

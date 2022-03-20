@@ -1,4 +1,2 @@
-emu
-*.o
-read_trace
-tracelog.bin
+build
+sdkconfig.old

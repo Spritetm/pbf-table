@@ -62,7 +62,7 @@ int gfx_get_key() {
 	return -1;
 }
 
-void gfx_show(uint8_t *buf, uint32_t *pal, int w, int h) {
+void gfx_show(uint8_t *buf, uint32_t *pal, int w, int h, int scroll) {
 	uint32_t *pixels;
 	int pitch;
 	int r=SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch);
@@ -81,7 +81,7 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int w, int h) {
 
 static SDL_AudioDeviceID audio_dev_id;
 
-void init_audio(int samprate, audio_cb_t cb) {
+void audio_init(int samprate, audio_cb_t cb) {
 	SDL_AudioSpec want={0}, have={0};
 	want.freq=samprate;
 	want.format=AUDIO_S16SYS;

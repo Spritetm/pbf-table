@@ -7,7 +7,7 @@
 
 #define DATA_DIR "../../../data"
 
-int mmap_file(const char *filename, void **mem) {
+int mmap_file(const char *filename, const void **mem) {
 	char path[256];
 	sprintf(path, "%s/%s", DATA_DIR, filename);
 	int f=open(path, O_RDONLY);
