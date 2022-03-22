@@ -26,6 +26,7 @@ void audio_unlock() {
 
 #define SND_CHUNKSZ 1024
 
+//Something is wrong here, as the audio plays way too fast.
 void audio_task(void *arg) {
 	uint16_t snd_in[SND_CHUNKSZ]={0};
 	uint32_t snd_out[SND_CHUNKSZ]={0};
