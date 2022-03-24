@@ -117,7 +117,6 @@ void cpu_addr_space_dump() {
 	printf("memory: unmapped %d (%dK)\n", unmapped, unmapped*CHUNK_SIZE/1024);
 }
 
-
 //  Hooks for emu
 
 void write86(uint32_t addr32, uint8_t value) {

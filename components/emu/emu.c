@@ -14,7 +14,7 @@
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
-#define SAMP_RATE 22050
+#define SAMP_RATE 11000
 struct module *music_module;
 struct replay *music_replay;
 int *music_mixbuf;
@@ -472,7 +472,7 @@ void midframe_cb() {
 
 void vblank_end_cb() {
 	frame++;
-	gfx_show(vram, pal, vga_ver, 607, vga_startaddr/320);
+	gfx_show(vram, pal, vga_ver, 607, vga_startaddr/(320/4));
 	schedule_add(midframe_cb, (1000000/15000)*cb_raster_int_line, 0);
 }
 

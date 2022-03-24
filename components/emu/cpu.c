@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include "esp_attr.h"
 
 #include "cpu.h"
 
@@ -546,7 +547,7 @@ static void writerm8(uint8_t rmval, uint8_t value) {
 	}
 }
 
-static uint8_t op_grp2_8(uint8_t cnt) {
+static IRAM_ATTR uint8_t op_grp2_8(uint8_t cnt) {
 
 	uint16_t s = oper1b;
 #ifdef CPU_LIMIT_SHIFT_COUNT
@@ -667,7 +668,7 @@ static uint8_t op_grp2_8(uint8_t cnt) {
 	return s & 0xFF;
 }
 
-static uint16_t op_grp2_16(uint8_t cnt) {
+static IRAM_ATTR uint16_t op_grp2_16(uint8_t cnt) {
 
 	uint32_t s = oper1;
 #ifdef CPU_LIMIT_SHIFT_COUNT
@@ -832,7 +833,7 @@ static inline void op_idiv8(uint16_t valdiv, uint8_t divisor) {
 	cpu.regs.byteregs[regal] = (uint8_t)d1;
 }
 
-static inline void op_grp3_8(void) {
+static IRAM_ATTR inline void op_grp3_8(void) {
 	oper1 = signext(oper1b);
 	oper2 = signext(oper2b);
 	switch (reg) {
@@ -960,7 +961,7 @@ static void op_idiv16(uint32_t valdiv, uint16_t divisor) {
 	cpu.regs.wordregs[regdx] = d2;
 }
 
-static inline void op_grp3_16(void) {
+static IRAM_ATTR inline void op_grp3_16(void) {
 	switch (reg) {
 	case 0:
 	case 1: /* TEST */
@@ -1041,7 +1042,7 @@ static inline void op_grp3_16(void) {
 	}
 }
 
-static inline void op_grp5(void) {
+static IRAM_ATTR inline void op_grp5(void) {
 	switch (reg) {
 		case 0: /* INC Ev */
 			{
@@ -1121,7 +1122,7 @@ uint32_t makeupticks = 0;
 //static uint64_t lastcountertimer = 0;
 
 
-static void modregrm ( void )
+static IRAM_ATTR void modregrm ( void )
 {
 #ifdef CPU_ADDR_MODE_CACHE
 	tempaddr32 = (((uint32_t)cpu.savecs << 4) + cpu.ip) & 0xFFFFF;
@@ -1253,7 +1254,7 @@ void exec86_abort() {
 	running=0;
 }
 
-void exec86(uint32_t execloops) {
+void IRAM_ATTR exec86(uint32_t execloops) {
 
 	uint8_t docontinue;
 	static uint16_t firstip;
