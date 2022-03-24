@@ -19,6 +19,8 @@
   USA.
 */
 
+#include "cpu_addr_space.h"
+
 /* cpu.c: functions to emulate the 8086/V20 CPU in software. the heart of
  * Fake86. */
 

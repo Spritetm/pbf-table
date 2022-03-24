@@ -5,6 +5,7 @@
 #include "driver/gpio.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "cpu_addr_space.h"
 
 #define BTN_LEFT 15
 #define BTN_START 14
@@ -56,6 +57,7 @@ uint64_t last_frame;
 
 uint64_t fps_ts;
 int fps_frames;
+int skipped;
 
 #define FRAME_TIME (1000000/60)
 
@@ -64,13 +66,17 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll) {
 	if (ts-fps_ts > (1000000*5)) {
 		printf("%d fps\n", fps_frames/5);
 		printf("Free internal: %d\n", heap_caps_get_free_size(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL));
+		cpu_addr_dump_hitctr();
 		fps_frames=0;
 		fps_ts=ts;
 	}
 	fps_frames++;
 
-	if (ts-last_frame < FRAME_TIME) {
+	if (ts-last_frame < FRAME_TIME || skipped==1) {
 		lcd_show(buf, pal, h, w, scroll-32);
+		skipped=0;
+	} else {
+		skipped++;
 	}
 	last_frame=ts;
 }

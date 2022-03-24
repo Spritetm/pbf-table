@@ -406,10 +406,15 @@ uint16_t force_callback(int seg, int off, int axval) {
 	//Run the callback until we can see the return address has been popped; this
 	//indicates a ret happened.
 //	while (cpu.regs.wordregs[regsp]<=cpu_backup.regs.wordregs[regsp]) exec_cpu(1);
-	while (cpu.segregs[regcs]!=0 || cpu.ip!=0) trace_run_cpu(1);
+	int cycles=0;
+	while (cpu.segregs[regcs]!=0 || cpu.ip!=0) {
+		trace_run_cpu(1);
+		cycles++;
+	}
 	ret=cpu.regs.wordregs[regax];
 	//Restore registers
 	cpu=cpu_backup;
+	schedule_adjust_cycles(cycles);
 	return ret;
 }
 
@@ -467,12 +472,12 @@ static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
 int frame=0;
 
 void midframe_cb() {
+	gfx_show(vram, pal, vga_ver, 607, vga_startaddr/(320/4));
 	if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off, 0);
 }
 
 void vblank_end_cb() {
 	frame++;
-	gfx_show(vram, pal, vga_ver, 607, vga_startaddr/(320/4));
 	schedule_add(midframe_cb, (1000000/15000)*cb_raster_int_line, 0);
 }
 
@@ -489,6 +494,14 @@ void pit_tick_evt_cb() {
 	intcall86(8); //pit interrupt
 }
 
+int optimize_segs[]={
+	0x59800, 0x5F800, 0x10000, 0x5F400,
+	0x59400, 0x21000, 0x5BC00, 0x5EC00,
+	0x20C00, 0x60C00, 0x5B800, 0x5F000,
+	0x60800, 0x60400, 0x5FC00, 0x60000,
+	0x20800, 0x5A400, 0x5D000, 0x5E800,
+	-1
+};
 
 void emu_run() {
 	cpu_addr_space_init();
@@ -501,6 +514,11 @@ void emu_run() {
 	schedule_add(vblank_evt_cb, 1000000/72, 1);
 
 	load_mz("TABLE1.PRG", 0x10000);
+	int i=0;
+	while (optimize_segs[i]>=0) {
+		cpu_addr_space_write8(optimize_segs[i], cpu_addr_space_read8(optimize_segs[i]));
+		i++;
+	}
 
 	while(1) {
 		schedule_run(1000000/72); //about 1 frame

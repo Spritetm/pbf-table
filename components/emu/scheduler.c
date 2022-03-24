@@ -12,7 +12,7 @@ typedef struct {
 
 #define GRAN_EVENT_US 10
 //Note: given that an 8086 does, like, 4 cycles per clock, an 8MHz one would have 20 ticks/10us.
-#define TICKS_PER_GRAN_EVENT 5
+#define TICKS_PER_GRAN_EVENT 6
 
 static schedule_event_t schedule[MAX_SCHED_EVENTS];
 
@@ -27,12 +27,20 @@ void schedule_add(schedule_cb_t cb, int delay_us, int repeat) {
 	}
 }
 
+void schedule_adjust_cycles(int extra_cycles) {
+	int us=((extra_cycles*GRAN_EVENT_US)/TICKS_PER_GRAN_EVENT);
+	for (int i=0; i<MAX_SCHED_EVENTS; i++) {
+		if (schedule[i].cb!=NULL) {
+			schedule[i].delay_us-=us;
+		}
+	}
+}
 
 void schedule_run(int us) {
 	while(us>0) {
+		schedule_adjust_cycles(TICKS_PER_GRAN_EVENT);
 		for (int i=0; i<MAX_SCHED_EVENTS; i++) {
 			if (schedule[i].cb!=NULL) {
-				schedule[i].delay_us-=GRAN_EVENT_US;
 				if (schedule[i].delay_us<0) {
 					schedule[i].cb();
 					if (schedule[i].repeat_us) {
@@ -47,3 +55,4 @@ void schedule_run(int us) {
 		us-=GRAN_EVENT_US;
 	}
 }
+

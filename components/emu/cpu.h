@@ -161,10 +161,10 @@ static inline void decodeflagsword ( uint16_t x )
 extern void     reset86  ( void );
 extern void     exec86   ( uint32_t execloops );
 extern void     intcall86(uint8_t intnum);
-extern void     write86  ( uint32_t addr32, uint8_t value );
-extern void     writew86  ( uint32_t addr32, uint16_t value );
-extern uint8_t  read86   ( uint32_t addr32 );
-extern uint16_t readw86   ( uint32_t addr32 );
+//extern void     write86  ( uint32_t addr32, uint8_t value );
+//extern void     writew86  ( uint32_t addr32, uint16_t value );
+//extern uint8_t  read86   ( uint32_t addr32 );
+//extern uint16_t readw86   ( uint32_t addr32 );
 extern void     cpu_push ( uint16_t pushval );
 extern uint16_t cpu_pop  ( void );
 extern void     cpu_IRET ( void );
