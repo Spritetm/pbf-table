@@ -1,5 +1,9 @@
 #include "stdint.h"
+#if ESP_PLATFORM
 #include "esp_attr.h"
+#else
+#define IRAM_ATTR
+#endif
 
 #pragma once
 

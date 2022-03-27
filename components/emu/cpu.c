@@ -28,7 +28,11 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#if ESP_PLATFORM
 #include "esp_attr.h"
+#else
+#define IRAM_ATTR
+#endif
 
 #include "cpu.h"
 

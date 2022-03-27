@@ -11,6 +11,7 @@
 #include "scheduler.h"
 #include "load_exe.h"
 #include "mmap_file.h"
+#include "pf_vars.h"
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
@@ -513,7 +514,8 @@ void emu_run() {
 
 	schedule_add(vblank_evt_cb, 1000000/72, 1);
 
-	load_mz("TABLE1.PRG", 0x10000);
+	int len=load_mz("TABLE1.PRG", 0x10000);
+	pf_vars_init(0x10000, len);
 	int i=0;
 	while (optimize_segs[i]>=0) {
 		cpu_addr_space_write8(optimize_segs[i], cpu_addr_space_read8(optimize_segs[i]));
@@ -561,6 +563,10 @@ void emu_run() {
 				intcall86(9);
 			}
 		}
+			int vx, vy, e;
+			e=pf_vars_get_flip_enabled();
+			pf_vars_get_ball_speed(&vx, &vy);
+			printf("Flip ena %d, ball vx,vy %d,%d\n", e, vx, vy);
 	}
 	return;
 }

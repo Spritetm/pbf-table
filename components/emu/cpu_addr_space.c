@@ -4,7 +4,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include "cpu_addr_space.h"
+#if ESP_PLATFORM
 #include "esp_attr.h"
+#else
+#define IRAM_ATTR
+#endif
 
 //1MiB of chunks
 mem_chunk_t cpu_addr_space_memory[NO_CHUNKS];
