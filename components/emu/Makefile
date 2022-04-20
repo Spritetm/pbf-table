@@ -1,5 +1,5 @@
 SRCS=cpu.c emu.c unix/gfx_sdl.c cpu_addr_space.c ibxm/ibxm.c hexdump.c scheduler.c trace.c 
-SRCS+=load_exe.c unix/mmap_file_unix.c unix/main_unix.c pf_vars.c
+SRCS+=load_exe.c unix/mmap_file_unix.c unix/main_unix.c unix/haptic_unix.c pf_vars.c
 TARGET=emu
 CFLAGS=-O0 -ggdb `pkg-config --cflags sdl2` -I.
 LDFLAGS=`pkg-config --libs sdl2`

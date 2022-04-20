@@ -15,6 +15,9 @@
 #include <assert.h>
 #include "haptic.h"
 
+#define HBL_FREQ 3146876
+#define VBL_FREQ 60
+
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
 #define SAMP_RATE 22000
@@ -199,9 +202,7 @@ uint8_t intr_table_readfn(int addr, mem_chunk_t *ch) {
 
 uint8_t abort_readfn(int addr, mem_chunk_t *ch) {
 	exec86_abort();
-	printf("ABORT!\n");
-	while(1);
-	return 0x90;
+	return 0x90; //nop
 }
 
 
@@ -344,7 +345,7 @@ void hook_interrupt_call(uint8_t intr) {
 		printf("audio: play sound effect in cl,bl,dl at volume bh: effect %d, %d, %d vol %d\n", 
 			REG_CX&0xff, REG_BX&0xff, REG_DX&0xff, REG_BX>>8);
 			//sample, pitch?, channel?, volume (0-64)
-		sfxchan_play(music_replay, REG_CX&0xff, REG_BX&0xff, REG_BX>>8);
+		sfxchan_play(music_replay, REG_CX&0xff, (REG_BX&0xff)+32, REG_BX>>8);
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==18) {
 		int adr=(REG_DS*0x10)+REG_DX;
@@ -375,10 +376,10 @@ void hook_interrupt_call(uint8_t intr) {
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==12) {
 		//note: far call
-		printf("init raster interrupt to es:dx, raster in bl or cx?\n");
+		printf("init raster interrupt to es:dx, raster in cx %d?\n", REG_CX);
 		cb_raster_seg=REG_ES;
 		cb_raster_off=REG_DX;
-		cb_raster_int_line=REG_CX/2;
+		cb_raster_int_line=REG_CX;
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==19) {
 		printf("init jingle handler to es:dx\n");
@@ -411,25 +412,24 @@ uint16_t force_callback(int seg, int off, int axval) {
 	int stack_addr=cpu.segregs[regss]*0x10+cpu.regs.wordregs[regsp];
 	//We'll return to a ROM location that aborts execution.
 	cpu_addr_space_write8(stack_addr, 0x00);
-	cpu_addr_space_write8(stack_addr+1, 0x00);
+	cpu_addr_space_write8(stack_addr+1, 0x00); //IP
 	cpu_addr_space_write8(stack_addr+2, 0x00);
-	cpu_addr_space_write8(stack_addr+3, 0x00);
+	cpu_addr_space_write8(stack_addr+3, 0xF8); //CS
 
-	//Run the callback until we can see the return address has been popped; this
-	//indicates a ret happened.
-//	while (cpu.regs.wordregs[regsp]<=cpu_backup.regs.wordregs[regsp]) exec_cpu(1);
-	printf("DOING CALLBACK\n");
+	//Run the callback until we can see the return address has been popped and
+	//we jumped there; this indicates a ret happened.
 	int cycles=0;
 	while(1) {
-		int t=trace_run_cpu(1);
+		const int cbcycles=10000;
+		int t=trace_run_cpu(cbcycles);
 		if (cpu.ip==0) {
 			printf("IP %x, SP %x\n", cpu.ip, cpu.segregs[regcs]);
 		}
 		if (t) {
-			cycles+=10000-t;
+			cycles+=cbcycles-t;
 			break;
 		} else {
-			cycles+=10000;
+			cycles+=cbcycles;
 		}
 	}
 	ret=cpu.regs.wordregs[regax];
@@ -495,18 +495,25 @@ static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
 int frame=0;
 
 void midframe_cb() {
+	if (!gfx_frame_done()) {
+		int c=0;
+		while(!gfx_frame_done()) {
+			trace_run_cpu(100);
+			c++;
+		}
+	}
 	gfx_show(vram, pal, vga_ver, 607, vga_startaddr/(320/4));
 	if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off, 0);
 }
 
 void vblank_end_cb() {
 	frame++;
-	schedule_add(midframe_cb, (1000000/15000)*cb_raster_int_line, 0);
+	schedule_add(midframe_cb, (1000000/HBL_FREQ)*cb_raster_int_line, 0, "midframe");
 }
 
 void vblank_evt_cb() {
 	if (cb_blank_seg!=0) force_callback(cb_blank_seg, cb_blank_off, 0);
-	schedule_add(vblank_end_cb, (1000000/15000)*20, 0);
+	schedule_add(vblank_end_cb, (1000000/HBL_FREQ)*20, 0, "vblank_end");
 }
 
 int dos_timer=0;
@@ -533,14 +540,14 @@ void emu_run() {
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	int r=music_init("TABLE2.MOD");
+	int r=music_init("TABLE1.MOD");
 	assert(r);
 	audio_init(SAMP_RATE, audio_cb);
 	haptic_init();
 
-	schedule_add(vblank_evt_cb, 1000000/72, 1);
+	schedule_add(vblank_evt_cb, 1000000/VBL_FREQ, 1, "vblank");
 
-	int len=load_mz("TABLE2.PRG", 0x10000);
+	int len=load_mz("TABLE1.PRG", 0x10000);
 	pf_vars_init(0x10000, len);
 	int i=0;
 	while (optimize_segs[i]>=0) {
@@ -550,7 +557,7 @@ void emu_run() {
 
 	int old_vx=0, old_vy=0;
 	while(1) {
-		schedule_run(1000000/72); //about 1 frame
+		schedule_run(1000000/VBL_FREQ); //1 frame
 #if DO_TRACE
 		if (frame==59) trace_enable(1);
 		if (frame==60) {
@@ -562,7 +569,7 @@ void emu_run() {
 
 //		printf("hor %d ver %d start addr %d\n", vga_hor, vga_ver, vga_startaddr);
 //		cpu_addr_space_dump();
-		if (has_looped(music_replay)) {
+		if (has_looped(music_replay) && cb_jingle_seg!=0) {
 			printf("Music has looped. Doing jingle callback...\n");
 			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
 			audio_lock();
@@ -590,8 +597,8 @@ void emu_run() {
 				intcall86(9);
 			}
 		}
-		int vx, vy, e;
-		e=pf_vars_get_flip_enabled();
+		//Figure out if we need to have a haptic event.
+		int vx, vy;
 		pf_vars_get_ball_speed(&vx, &vy);
 		int ax=(old_vx-vx)/20;
 		int ay=(old_vy-vy)/20;
@@ -603,7 +610,6 @@ void emu_run() {
 			haptic_event(HAPTIC_EVT_BALL, ax, ay);
 		}
 		old_vx=vx; old_vy=vy;
-//		printf("Flip ena %d, ball vx,vy %d,%d\n", e, vx, vy);
 	}
 	return;
 }
