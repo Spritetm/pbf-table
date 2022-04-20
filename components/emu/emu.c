@@ -51,8 +51,6 @@ void dump_caller() {
 	printf("Caller: %04X:%04X\n", seg, off);
 }
 
-void timing() {
-}
 
 static uint8_t *vram;
 static uint32_t pal[256];
@@ -199,6 +197,14 @@ uint8_t intr_table_readfn(int addr, mem_chunk_t *ch) {
 	return 0xcf; //IRET
 }
 
+uint8_t abort_readfn(int addr, mem_chunk_t *ch) {
+	exec86_abort();
+	printf("ABORT!\n");
+	while(1);
+	return 0x90;
+}
+
+
 void init_intr_table() {
 	//Set up interrupt table so each interrupt i vectors to address (F000:i)
 	for (int i=0; i<256; i++) {
@@ -210,6 +216,8 @@ void init_intr_table() {
 	//Set up some address space in ROM that the interrupt table vectors point at by default.
 	//We take a read from the first 256 addresses as an interrupt request for that irq.
 	cpu_addr_space_map_cb(0xf0000, 2048, intr_table_writefn, intr_table_readfn, NULL);
+	//For callbacks, we also have some memory that aborts execution.
+	cpu_addr_space_map_cb(0xf8000, 2048, intr_table_writefn, abort_readfn, NULL);
 }
 
 int cb_raster_int_line=0;
@@ -397,10 +405,11 @@ uint16_t force_callback(int seg, int off, int axval) {
 	cpu.segregs[regcs]=seg;
 	cpu.ip=off;
 	cpu.regs.wordregs[regax]=axval;
-	//increase sp by four, as if there was a call that pushed the address of the calling function
+	//decrease sp by four, as if there was a call that pushed the address of the calling function
 	//on the stack
 	cpu.regs.wordregs[regsp]=cpu.regs.wordregs[regsp]-4;
 	int stack_addr=cpu.segregs[regss]*0x10+cpu.regs.wordregs[regsp];
+	//We'll return to a ROM location that aborts execution.
 	cpu_addr_space_write8(stack_addr, 0x00);
 	cpu_addr_space_write8(stack_addr+1, 0x00);
 	cpu_addr_space_write8(stack_addr+2, 0x00);
@@ -409,10 +418,19 @@ uint16_t force_callback(int seg, int off, int axval) {
 	//Run the callback until we can see the return address has been popped; this
 	//indicates a ret happened.
 //	while (cpu.regs.wordregs[regsp]<=cpu_backup.regs.wordregs[regsp]) exec_cpu(1);
+	printf("DOING CALLBACK\n");
 	int cycles=0;
-	while (cpu.segregs[regcs]!=0 || cpu.ip!=0) {
-		trace_run_cpu(1);
-		cycles++;
+	while(1) {
+		int t=trace_run_cpu(1);
+		if (cpu.ip==0) {
+			printf("IP %x, SP %x\n", cpu.ip, cpu.segregs[regcs]);
+		}
+		if (t) {
+			cycles+=10000-t;
+			break;
+		} else {
+			cycles+=10000;
+		}
 	}
 	ret=cpu.regs.wordregs[regax];
 	//Restore registers

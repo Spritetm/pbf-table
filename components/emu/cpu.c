@@ -1260,7 +1260,7 @@ void exec86_abort() {
 	running=0;
 }
 
-void IRAM_ATTR exec86(uint32_t execloops) {
+int IRAM_ATTR exec86(uint32_t execloops) {
 
 	uint8_t docontinue;
 	static uint16_t firstip;
@@ -1272,9 +1272,7 @@ void IRAM_ATTR exec86(uint32_t execloops) {
 
 	for (uint32_t loopcount = 0; loopcount < execloops; loopcount++) {
 
-		if ((totalexec & TIMING_INTERVAL) == 0)
-			timing();
-
+#if 0
 		if (trap_toggle) {
 			intcall86(1);
 		}
@@ -1284,6 +1282,7 @@ void IRAM_ATTR exec86(uint32_t execloops) {
 		} else {
 			trap_toggle = 0;
 		}
+#endif
 
 		//todo: intr logic
 		//intcall86(nextintr());
@@ -3541,8 +3540,9 @@ void IRAM_ATTR exec86(uint32_t execloops) {
 
 	skipexecution:
 		if (!running) {
-			return;
+			return execloops-loopcount;
 		}
 	}
+	return 0;
 }
 #endif

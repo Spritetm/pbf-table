@@ -23,7 +23,6 @@
 
 #include <stdint.h>
 
-#define TIMING_INTERVAL 15
 
 #ifdef CPU_ADDR_MODE_CACHE
 extern uint64_t cached_access_count, uncached_access_count;
@@ -159,7 +158,8 @@ static inline void decodeflagsword ( uint16_t x )
 #define CPU_DH  	cpu.regs.byteregs[regdh]
 
 extern void     reset86  ( void );
-extern void     exec86   ( uint32_t execloops );
+//Returns the amount of loops left (in case of abort) or 0
+extern int      exec86   ( uint32_t execloops );
 extern void     intcall86(uint8_t intnum);
 //extern void     write86  ( uint32_t addr32, uint8_t value );
 //extern void     writew86  ( uint32_t addr32, uint16_t value );
@@ -169,7 +169,6 @@ extern void     cpu_push ( uint16_t pushval );
 extern uint16_t cpu_pop  ( void );
 extern void     cpu_IRET ( void );
 extern int      cpu_hlt_handler ( void );
-extern void timing();
 extern uint8_t portin(uint16_t port);
 extern uint8_t portin16(uint16_t port);
 extern void portout(uint16_t port, uint8_t val);

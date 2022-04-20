@@ -17,9 +17,9 @@
 //Note: this array is pretty large (4M-8M). You don't want this on embedded devices.
 static trace_bp_cb_t *cbs[1024*1024]={0};
 
-static void exec86_bp(int count) {
+static int exec86_bp(int count) {
 	for (int i=0; i<count; i++) {
-		exec86(1);
+		if (exec86(1)!=0) return count-i;
 		int adr=(cpu.segregs[regcs]<<4)+cpu.ip;
 		if (cbs[adr]) cbs[adr]();
 	}
@@ -30,9 +30,6 @@ void trace_set_bp(int cs, int ip, trace_bp_cb_t cb) {
 }
 
 #else
-static void exec86_bp(int count) {
-	exec86(count);
-}
 
 void set_bp(int addr, trace_bp_cb_t cb) {
 	return;
@@ -55,11 +52,10 @@ static int do_trace=0;
 void trace_run_cpu(int count) {
 	if (!tracemem) tracemem=calloc(TRACECT, sizeof(trace_t));
 	if (!do_trace) {
-		exec86_bp(count);
-		return;
+		return exec86_bp(count);
 	}
 	for (int i=0; i<count; i++) {
-		exec86_bp(1);
+		if (exec86_bp(1)!=0) return count-i;
 		tracemem[tracepos].cs=cpu.segregs[regcs];
 		tracemem[tracepos].ip=cpu.ip;
 		tracemem[tracepos].ax=REG_AX;
@@ -76,6 +72,7 @@ void trace_run_cpu(int count) {
 			printf("Trace complete.\n");
 			exit(0);
 		}
+		if (!r) return 0;
 	}
 }
 
@@ -89,9 +86,6 @@ void trace_enable(int ena) {
 	return;
 }
 
-void trace_run_cpu(int count) {
-	exec86_bp(count);
-}
 #endif
 
 
