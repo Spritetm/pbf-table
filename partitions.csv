@@ -2,12 +2,12 @@
 # Name,  Type, SubType, Offset,  Size
 factory, app,  factory, 0x10000, 928k
 nvs,     data, nvs,     0xFC000, 16K
-table1,  123,    1,     0x100000, 1024K
-table2,  123,    2,     0x200000, 1024K
-table3,  123,    3,     0x300000, 1024K
-table4,  123,    4,     0x400000, 1024K
-mod1,    124,    1,     0x500000, 1024K
-mod2,    124,    2,     0x600000, 1024K
-mod3,    124,    3,     0x700000, 1024K
-mod4,    124,    4,     0x800000, 1024K
-mod5,    124,    5,     0x900000, 1024K
+table1,  123,    1,     0x100000, 640K
+table2,  123,    2,     , 640K
+table3,  123,    3,     , 640K
+table4,  123,    4,     , 640K
+mod1,    124,    1,     , 320K
+mod2,    124,    2,     , 320K
+mod3,    124,    3,     , 320K
+mod4,    124,    4,     , 320K
+mod5,    124,    5,     , 320K

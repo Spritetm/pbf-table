@@ -12,17 +12,19 @@
 #include "load_exe.h"
 #include "mmap_file.h"
 #include "pf_vars.h"
+#include <assert.h>
+#include "haptic.h"
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
-#define SAMP_RATE 11000
-struct module *music_module;
-struct replay *music_replay;
-int *music_mixbuf;
-int music_mixbuf_len;
-int music_mixbuf_left;
+#define SAMP_RATE 22000
+static struct module *music_module;
+static struct replay *music_replay;
+static int *music_mixbuf;
+static int music_mixbuf_len;
+static int music_mixbuf_left;
 
-int key_pressed=0;
+static int key_pressed=0;
 
 #define REG_AX cpu.regs.wordregs[regax]
 #define REG_BX cpu.regs.wordregs[regbx]
@@ -52,17 +54,17 @@ void dump_caller() {
 void timing() {
 }
 
-uint8_t *vram;
-uint32_t pal[255];
-int vga_seq_addr;
-int vga_mask;
-int vga_pal_idx;
-int vga_crtc_addr;
-int vga_hor=200, vga_ver=320;
-int vga_startaddr;
-uint8_t vga_gcregs[8];
-int vga_gcindex;
-uint8_t vga_latch[4];
+static uint8_t *vram;
+static uint32_t pal[256];
+static int vga_seq_addr;
+static int vga_mask;
+static int vga_pal_idx;
+static int vga_crtc_addr;
+static int vga_hor=200, vga_ver=320;
+static int vga_startaddr;
+static uint8_t vga_gcregs[8];
+static int vga_gcindex;
+static uint8_t vga_latch[4];
 
 static int keycode[]={
 	0,
@@ -430,7 +432,9 @@ int music_init(const char *fname) {
 		return 0;
 	}
 	music_replay=new_replay(music_module, SAMP_RATE, 0);
+	assert(music_replay);
 	music_mixbuf=malloc(calculate_mix_buf_len(SAMP_RATE)*4);
+	assert(music_mixbuf);
 	music_mixbuf_left=0;
 	music_mixbuf_len=0;
 	return 1;
@@ -504,17 +508,21 @@ int optimize_segs[]={
 	-1
 };
 
+#define ABS(x) (((x)>0)?(x):(-x))
+
 void emu_run() {
 	cpu_addr_space_init();
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	music_init("TABLE1.MOD");
+	int r=music_init("TABLE2.MOD");
+	assert(r);
 	audio_init(SAMP_RATE, audio_cb);
+	haptic_init();
 
 	schedule_add(vblank_evt_cb, 1000000/72, 1);
 
-	int len=load_mz("TABLE1.PRG", 0x10000);
+	int len=load_mz("TABLE2.PRG", 0x10000);
 	pf_vars_init(0x10000, len);
 	int i=0;
 	while (optimize_segs[i]>=0) {
@@ -522,6 +530,7 @@ void emu_run() {
 		i++;
 	}
 
+	int old_vx=0, old_vy=0;
 	while(1) {
 		schedule_run(1000000/72); //about 1 frame
 #if DO_TRACE
@@ -539,7 +548,7 @@ void emu_run() {
 			printf("Music has looped. Doing jingle callback...\n");
 			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
 			audio_lock();
-			replay_set_sequence_pos(music_replay, ret&0xff);
+			if (ret!=0) replay_set_sequence_pos(music_replay, ret&0xff);
 			printf("Jingle callback returned 0x%X\n", ret);
 			audio_unlock();
 		}
@@ -563,10 +572,20 @@ void emu_run() {
 				intcall86(9);
 			}
 		}
-			int vx, vy, e;
-			e=pf_vars_get_flip_enabled();
-			pf_vars_get_ball_speed(&vx, &vy);
-			printf("Flip ena %d, ball vx,vy %d,%d\n", e, vx, vy);
+		int vx, vy, e;
+		e=pf_vars_get_flip_enabled();
+		pf_vars_get_ball_speed(&vx, &vy);
+		int ax=(old_vx-vx)/20;
+		int ay=(old_vy-vy)/20;
+		if (ax>127) ax=127;
+		if (ax<-127) ax=-127;
+		if (ay>127) ay=127;
+		if (ay<-127) ay=-127;
+		if (ABS(ax)>20 || ABS(ay)>20) {
+			haptic_event(HAPTIC_EVT_BALL, ax, ay);
+		}
+		old_vx=vx; old_vy=vy;
+//		printf("Flip ena %d, ball vx,vy %d,%d\n", e, vx, vy);
 	}
 	return;
 }
