@@ -540,14 +540,14 @@ void emu_run() {
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	int r=music_init("TABLE1.MOD");
+	int r=music_init("TABLE4.MOD");
 	assert(r);
 	audio_init(SAMP_RATE, audio_cb);
 	haptic_init();
 
 	schedule_add(vblank_evt_cb, 1000000/VBL_FREQ, 1, "vblank");
 
-	int len=load_mz("TABLE1.PRG", 0x10000);
+	int len=load_mz("TABLE4.PRG", 0x10000);
 	pf_vars_init(0x10000, len);
 	int i=0;
 	while (optimize_segs[i]>=0) {
