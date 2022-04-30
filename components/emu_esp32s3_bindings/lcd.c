@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "driver/spi_master.h"
 #include <string.h>
+#include <lcdbackboard.h>
 
 static const char *TAG = "rgblcd";
 
@@ -458,6 +459,7 @@ void lcd_init(void) {
 		.sclk_io_num=PIN_NUM_CLK,
 		.quadwp_io_num=-1,
 		.quadhd_io_num=-1,
+		.max_transfer_sz=1000000 //todo: tweak
 	};
 	spi_device_interface_config_t devcfg={
 		.clock_speed_hz=10*1000,
@@ -468,11 +470,14 @@ void lcd_init(void) {
 		.flags=SPI_DEVICE_3WIRE,
 	};
 	//Initialize the SPI bus
-	ret=spi_bus_initialize(LCD_HOST, &buscfg, 0);
+	ret=spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO);
 	ESP_ERROR_CHECK(ret);
 	//Attach the LCD to the SPI bus
 	ret=spi_bus_add_device(LCD_HOST, &devcfg, &spi);
 	ESP_ERROR_CHECK(ret);
+	spi_device_handle_t bbspi=lcdbb_add_to_bus(LCD_HOST);
 	//Initialize the LCD
 	lcd_init_panel(spi);
+	//Initialize the backboard LCD
+	lcdbb_init(bbspi);
 }

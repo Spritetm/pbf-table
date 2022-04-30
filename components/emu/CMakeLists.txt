@@ -1,7 +1,7 @@
 #Note: this is for the ESP32 build.
 
 
-idf_component_register(SRCS emu.c cpu.c cpu_addr_space.c load_exe.c scheduler.c trace.c 
+idf_component_register(SRCS emu.c cpu.c cpu_addr_space.c load_exe.c scheduler.c trace.c music.c
         ibxm/ibxm.c pf_vars.c
         REQUIRES log
         INCLUDE_DIRS "." "ibxm" )

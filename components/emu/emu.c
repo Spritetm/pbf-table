@@ -5,7 +5,6 @@
 #include <string.h>
 #include "gfx.h"
 #include "cpu_addr_space.h"
-#include "ibxm/ibxm.h"
 #include "hexdump.h"
 #include "trace.h"
 #include "scheduler.h"
@@ -14,18 +13,13 @@
 #include "pf_vars.h"
 #include <assert.h>
 #include "haptic.h"
+#include "music.h"
 
 #define HBL_FREQ 3146876
 #define VBL_FREQ 60
 
 //Note: this code assumes a little-endian host machine. It messes up when run on a big-endian one.
 
-#define SAMP_RATE 22000
-static struct module *music_module;
-static struct replay *music_replay;
-static int *music_mixbuf;
-static int music_mixbuf_len;
-static int music_mixbuf_left;
 
 static int key_pressed=0;
 
@@ -187,7 +181,7 @@ void init_vga_mem() {
 	cpu_addr_space_map_cb(0xa0000, 0x10000, vga_mem_write, vga_mem_read, NULL);
 }
 
-void hook_interrupt_call(uint8_t intr);
+static void hook_interrupt_call(uint8_t intr);
 
 void intr_table_writefn(int addr, uint8_t data, mem_chunk_t *ch) {
 	//this is supposed to be rom
@@ -251,7 +245,7 @@ static pref_type_t prefs={
 	.s_mode=0
 };
 
-void hook_interrupt_call(uint8_t intr) {
+static void hook_interrupt_call(uint8_t intr) {
 //	printf("Intr 0x%X\n", intr);
 //	dump_regs();
 	if (intr==0x21 && (REG_AX>>8)==0x4A) {
@@ -328,10 +322,8 @@ void hook_interrupt_call(uint8_t intr) {
 	} else if (intr==0x66 && (REG_AX&0xff)==16) { 
 		//AL=FORCE POSITION, BX=THE POSITION ret: AL=OLD POSITION
 		printf("audio: play jingle in bx: 0x%X\n", REG_BX);
-		audio_lock();
-		int old_pos=replay_get_sequence_pos(music_replay);
-		replay_set_sequence_pos(music_replay, REG_BX);
-		audio_unlock();
+		int old_pos=music_get_sequence_pos();
+		music_set_sequence_pos(REG_BX);
 		REG_AX=old_pos;
 	} else if (intr==0x66 && (REG_AX&0xff)==21) {
 		printf("audio: get driver caps, AL returns bitfield? Nosound.drv returns 0xa.\n");
@@ -345,7 +337,7 @@ void hook_interrupt_call(uint8_t intr) {
 		printf("audio: play sound effect in cl,bl,dl at volume bh: effect %d, %d, %d vol %d\n", 
 			REG_CX&0xff, REG_BX&0xff, REG_DX&0xff, REG_BX>>8);
 			//sample, pitch?, channel?, volume (0-64)
-		sfxchan_play(music_replay, REG_CX&0xff, (REG_BX&0xff)+32, REG_BX>>8);
+		music_sfxchan_play(REG_CX&0xff, (REG_BX&0xff)+32, REG_BX>>8);
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==18) {
 		int adr=(REG_DS*0x10)+REG_DX;
@@ -439,58 +431,6 @@ uint16_t force_callback(int seg, int off, int axval) {
 	return ret;
 }
 
-int music_init(const char *fname) {
-	struct data mod_data;
-	mod_data.length=mmap_file(fname, (const void**)&mod_data.buffer);
-
-	char msg[64];
-	music_module=module_load(&mod_data, msg);
-	if (music_module==NULL) {
-		printf("%s: %s\n", fname, msg);
-		return 0;
-	}
-	music_replay=new_replay(music_module, SAMP_RATE, 0);
-	assert(music_replay);
-	music_mixbuf=malloc(calculate_mix_buf_len(SAMP_RATE)*4);
-	assert(music_mixbuf);
-	music_mixbuf_left=0;
-	music_mixbuf_len=0;
-	return 1;
-}
-
-static void fill_stream_buf(int16_t *stream, int *mixbuf, int len) {
-	for (int i=0; i<len; i++) {
-		int v=mixbuf[i];
-		if (v<-32768) v=-32768;
-		if (v>32767) v=32767;
-		stream[i]=v;
-	}
-}
-
-static void audio_cb(void* userdata, uint8_t* streambytes, int len) {
-	int16_t *stream=(int16_t*)streambytes;
-	len=len/2; //because bytes -> words
-	int pos=0;
-	if (len==0) return;
-	//if there's still music in the buffer, use that
-	if (music_mixbuf_left!=0) {
-		pos=music_mixbuf_left;
-		fill_stream_buf(stream, &music_mixbuf[music_mixbuf_len-music_mixbuf_left], music_mixbuf_left);
-	}
-	music_mixbuf_left=0;
-	//Refull until music buffer is full.
-	while (pos!=len) {
-		music_mixbuf_len=replay_get_audio(music_replay, (int*)music_mixbuf);
-		int cplen=music_mixbuf_len;
-		if (pos+cplen>len) {
-			cplen=len-pos;
-			music_mixbuf_left=music_mixbuf_len-cplen;
-		}
-		fill_stream_buf(&stream[pos], music_mixbuf, cplen);
-		pos+=cplen;
-	}
-}
-
 
 int frame=0;
 
@@ -535,19 +475,19 @@ int optimize_segs[]={
 
 #define ABS(x) (((x)>0)?(x):(-x))
 
-void emu_run() {
+void emu_run(const char *prg, const char *mod) {
 	cpu_addr_space_init();
 	init_intr_table();
 	init_vga_mem();
 	gfx_init();
-	int r=music_init("TABLE4.MOD");
+	music_init();
+	int r=music_load(mod);
 	assert(r);
-	audio_init(SAMP_RATE, audio_cb);
 	haptic_init();
 
 	schedule_add(vblank_evt_cb, 1000000/VBL_FREQ, 1, "vblank");
 
-	int len=load_mz("TABLE4.PRG", 0x10000);
+	int len=load_mz(prg, 0x10000);
 	pf_vars_init(0x10000, len);
 	int i=0;
 	while (optimize_segs[i]>=0) {
@@ -569,11 +509,11 @@ void emu_run() {
 
 //		printf("hor %d ver %d start addr %d\n", vga_hor, vga_ver, vga_startaddr);
 //		cpu_addr_space_dump();
-		if (has_looped(music_replay) && cb_jingle_seg!=0) {
+		if (music_has_looped() && cb_jingle_seg!=0) {
 			printf("Music has looped. Doing jingle callback...\n");
 			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
 			audio_lock();
-			if (ret!=0) replay_set_sequence_pos(music_replay, ret&0xff);
+			if (ret!=0) music_set_sequence_pos(ret&0xff);
 			printf("Jingle callback returned 0x%X\n", ret);
 			audio_unlock();
 		}
@@ -587,7 +527,7 @@ void emu_run() {
 			} else if (key==INPUT_TEST) {
 				uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
 				audio_lock();
-				replay_set_sequence_pos(music_replay, ret&0xff);
+				music_set_sequence_pos(ret&0xff);
 				audio_unlock();
 				printf("Jingle callback returned 0x%X\n", ret);
 			} else {

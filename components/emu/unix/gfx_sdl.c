@@ -103,3 +103,7 @@ void audio_lock() {
 void audio_unlock() {
 	SDL_UnlockAudioDevice(audio_dev_id);
 }
+
+int gfx_frame_done() {
+	return 1;
+}

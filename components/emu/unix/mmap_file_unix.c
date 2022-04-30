@@ -27,6 +27,6 @@ int mmap_file(const char *filename, const void **mem) {
 	return statbuf.st_size;
 }
 
-void munmap_file(void *ptr) {
+void munmap_file(const void *ptr) {
 	munmap(ptr, 1024*1024);
 }
