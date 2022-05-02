@@ -257,15 +257,35 @@ void fade_bbimg(spi_device_handle_t spi, int cur_img, int next_img, uint16_t *li
 static void put_dmd(spi_device_handle_t spi, uint8_t *bf, uint32_t *pal, uint16_t *line_a, uint16_t *line_b) {
 	uint16_t *line=line_a;
 
+	//The DMD space in the framebuffer is 320x32 pixels. To simulate a DMD, every other line and column
+	//is not active (does not contain an actual DMD pixel) making the DMD itsefl 160x32 pixels. We want
+	//to show this in a 240x32 LCD space, so we need to compress 160 DMD pixels to 240 real pixels. We do
+	//this by subpixel rendering: for each 2 DMD pixels, we generate 3 LCD pixels as such:
+	//RGBRGBRGB <- 3 LCD pixels, with their RGB subpixels
+	//111x222xx <- Locations of (r,g) values of the DMD subpixels
 	for (int yy=0; yy<32; yy+=PARALLEL_LINES) {
 		uint16_t *p=line;
 		for (int y=0; y<PARALLEL_LINES; y++) {
-			for (int x=0; x<240; x++) {
-				int r=(pal[bf[336*(yy+y)+x*2]]>>16)&0xff;
-				int g=(pal[bf[336*(yy+y)+x*2]]>>8)&0xff;
-				int b=(pal[bf[336*(yy+y)+x*2]]>>0)&0xff;
-				uint16_t pp=((r>>3)<<11)|((g>>2)<<5)|((b>>3));
+			uint8_t *pl=&bf[336*(yy+y)];
+			for (int x=0; x<240; x+=3) {
+				int r,g,b;
+				uint16_t pp;
+				r=(pal[pl[0]]>>16)&0xff;
+				g=(pal[pl[0]]>>8)&0xff;
+				b=(pal[pl[0]]>>0)&0xff;
+				pp=((r>>3)<<11)|((g>>2)<<5)|((b>>3));
 				*p++=(pp>>8)|(pp<<8);
+				r=0;
+				g=(pal[pl[2]]>>8)&0xff;
+				b=(pal[pl[2]]>>0)&0xff;;
+				pp=((r>>3)<<11)|((g>>2)<<5)|((b>>3));
+				*p++=(pp>>8)|(pp<<8);
+				r=(pal[pl[2]]>>16)&0xff;
+				g=0;
+				b=0;
+				pp=((r>>3)<<11)|((g>>2)<<5)|((b>>3));
+				*p++=(pp>>8)|(pp<<8);
+				pl+=4;
 			}
 		}
 		send_line_finish(spi);

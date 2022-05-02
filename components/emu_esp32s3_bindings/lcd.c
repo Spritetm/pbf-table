@@ -356,8 +356,13 @@ static bool IRAM_ATTR fill_fb(void *bounce_buf, int pos_px, int len_bytes, void 
 	int margin=360-320;
 	for (int y=0; y<len_px/360; y++) {
 		for (int i=0; i<margin/2; i++) *out++=0;
-		for (int x=0; x<320; x++) {
-			*out++=cur_pal[*p++];
+		if (ypos+y<32) {
+			//Don't draw DMD; we already show that on the backboard display.
+			for (int x=0; x<320; x++) *out++=0;
+		} else {
+			for (int x=0; x<320; x++) {
+				*out++=cur_pal[*p++];
+			}
 		}
 		p+=(cur_pitch-320);
 		for (int i=margin/2; i<margin; i++) *out++=0;
