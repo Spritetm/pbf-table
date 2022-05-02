@@ -18,6 +18,8 @@
 #define HAPTIC_A 4
 #define HAPTIC_B 5
 
+static SemaphoreHandle_t rdy_sem;
+
 void gfxinit_task(void *arg) {
 	lcd_init();
 	i2c_config_t conf = {
@@ -39,6 +41,7 @@ void gfxinit_task(void *arg) {
 	w[0]=1; //output
 	w[1]=0;
 	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, TCA_ADR, w, 2, pdMS_TO_TICKS(100)));
+	xSemaphoreGive(rdy_sem);
 	vTaskDelete(NULL);
 }
 
@@ -60,10 +63,11 @@ static int get_btn_bitmap() {
 
 
 void gfx_init() {
+	rdy_sem=xSemaphoreCreateBinary();
 	//We really want the gfx to be on the other core.
-	xTaskCreatePinnedToCore(&gfxinit_task, "gfx", 32*1024, NULL, 2, NULL, 1);
-	//Note: should wait until display is inited properly...
-	vTaskDelay(pdMS_TO_TICKS(1000));
+	xTaskCreatePinnedToCore(&gfxinit_task, "gfx", 16*1024, NULL, 2, NULL, 1);
+	xSemaphoreTake(rdy_sem, portMAX_DELAY);
+	vSemaphoreDelete(rdy_sem);
 }
 
 int old_btns;

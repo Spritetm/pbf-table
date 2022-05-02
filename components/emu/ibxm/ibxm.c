@@ -876,12 +876,12 @@ static struct module* module_load_mod( struct data *data, char *message ) {
 		module->default_gvol = 64;
 		module->default_speed = 6;
 		module->default_tempo = 125;
-		module->default_panning = DO_CALLOC( module->num_channels, sizeof( unsigned char ) );
+		module->default_panning = DO_CALLOC( module->num_channels+1, sizeof( unsigned char ) );
 		if( !module->default_panning ) {
 			dispose_module( module );
 			return NULL;
 		}
-		for( idx = 0; idx < module->num_channels; idx++ ) {
+		for( idx = 0; idx < module->num_channels+1; idx++ ) {
 			module->default_panning[ idx ] = 51;
 			if( ( idx & 3 ) == 1 || ( idx & 3 ) == 2 ) {
 				module->default_panning[ idx ] = 204;

@@ -1,5 +1,5 @@
-#include "emu.h"
+#include "menu.h"
 
 void app_main() {
-	emu_run();
+	menu_start();
 }

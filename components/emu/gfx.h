@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 #define INPUT_SPRING 1
 #define INPUT_LFLIP 2
 #define INPUT_RFLIP 3

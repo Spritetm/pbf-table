@@ -177,7 +177,7 @@ uint8_t vga_mem_read(int addr, mem_chunk_t *ch) {
 }
 
 void init_vga_mem() {
-	vram=malloc(256*1024);
+	vram=calloc(256*1024, 1);
 	cpu_addr_space_map_cb(0xa0000, 0x10000, vga_mem_write, vga_mem_read, NULL);
 }
 
@@ -347,9 +347,6 @@ static void hook_interrupt_call(uint8_t intr) {
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==4) {
 		printf("audio: play module ?idx is in bx: 0x%X? at rate cx %d (0 if default)\n", REG_BX, REG_CX);
-//		audio_lock();
-//		replay_set_sequence_pos(music_replay, REG_BX-1);
-//		audio_unlock();
 		REG_AX=0;
 	} else if (intr==0x66 && (REG_AX&0xff)==15) {
 		printf("audio: stop play\n");
@@ -468,8 +465,8 @@ int optimize_segs[]={
 	0x59800, 0x5F800, 0x10000, 0x5F400,
 	0x59400, 0x21000, 0x5BC00, 0x5EC00,
 	0x20C00, 0x60C00, 0x5B800, 0x5F000,
-	0x60800, 0x60400, 0x5FC00, 0x60000,
-	0x20800, 0x5A400, 0x5D000, 0x5E800,
+//	0x60800, 0x60400, 0x5FC00, 0x60000,
+//	0x20800, 0x5A400, 0x5D000, 0x5E800,
 	-1
 };
 
@@ -479,11 +476,8 @@ void emu_run(const char *prg, const char *mod) {
 	cpu_addr_space_init();
 	init_intr_table();
 	init_vga_mem();
-	gfx_init();
-	music_init();
 	int r=music_load(mod);
 	assert(r);
-	haptic_init();
 
 	schedule_add(vblank_evt_cb, 1000000/VBL_FREQ, 1, "vblank");
 
@@ -512,10 +506,8 @@ void emu_run(const char *prg, const char *mod) {
 		if (music_has_looped() && cb_jingle_seg!=0) {
 			printf("Music has looped. Doing jingle callback...\n");
 			uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
-			audio_lock();
 			if (ret!=0) music_set_sequence_pos(ret&0xff);
 			printf("Jingle callback returned 0x%X\n", ret);
-			audio_unlock();
 		}
 		int key;
 		while ((key=gfx_get_key())>0) {
@@ -525,11 +517,14 @@ void emu_run(const char *prg, const char *mod) {
 				mouse_down=0;
 				mouse_btn=1;
 			} else if (key==INPUT_TEST) {
-				uint16_t ret=force_callback(cb_jingle_seg, cb_jingle_off, 0);
-				audio_lock();
-				music_set_sequence_pos(ret&0xff);
-				audio_unlock();
-				printf("Jingle callback returned 0x%X\n", ret);
+#if 1
+				FILE *f=fopen("vram.bin", "w");
+				fwrite(vram, 256*1024, 1, f);
+				fclose(f);
+				f=fopen("vram.pal", "w");
+				fwrite(pal, 256*4, 1, f);
+				fclose(f);
+#endif
 			} else {
 				//wait till interrupts are enabled (not in int)
 				while (cpu.ifl==0) trace_run_cpu(10);

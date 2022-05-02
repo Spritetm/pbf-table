@@ -63,12 +63,21 @@ int gfx_get_key() {
 }
 
 void gfx_show(uint8_t *buf, uint32_t *pal, int w, int h, int scroll) {
-	uint32_t *pixels;
+	uint32_t *pixels=0;
 	int pitch;
+	int texh, texw;
+	SDL_QueryTexture(texture, NULL, NULL, &texw, &texh);
 	int r=SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch);
+	if (r!=0) {
+		printf("SDL_LockTexture: %s\n", SDL_GetError());
+		return;
+	}
+	int in_pitch=w;
+	if (h>texh) h=texh;
+	if (w>texw) w=texw;
 	for (int y=0; y<h; y++) {
 		for (int x=0; x<w; x++) {
-			pixels[y*(pitch/4)+x]=pal[buf[y*w+x]];
+			pixels[y*(pitch/4)+x]=pal[buf[y*in_pitch+x]];
 		}
 	}
 

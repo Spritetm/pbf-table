@@ -10,7 +10,7 @@ typedef struct {
 	int size;
 } file_t;
 
-#define NO_FILES 9
+#define NO_FILES 10
 
 const file_t available_files[NO_FILES]={
 	{"TABLE1.PRG", 123, 1, 537030},
@@ -22,6 +22,7 @@ const file_t available_files[NO_FILES]={
 	{"TABLE3.MOD", 124, 3, 219668},
 	{"TABLE4.MOD", 124, 4, 216418},
 	{"INTRO.MOD", 124, 5, 317262},
+	{"table-screens.bin", 125, 1, 1114112},
 };
 
 typedef struct {

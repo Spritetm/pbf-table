@@ -28,5 +28,8 @@ int mmap_file(const char *filename, const void **mem) {
 }
 
 void munmap_file(const void *ptr) {
-	munmap(ptr, 1024*1024);
+//Somehow, munmap makes the entire thing crash after the menu... something with corrupting video driver
+//memory somehow? Obviously, not unmapping is a hack and shouldn't be done in production code... but
+//this ain't production code.
+//	munmap(ptr, 1024*1024);
 }
