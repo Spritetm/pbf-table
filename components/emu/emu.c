@@ -14,6 +14,8 @@
 #include <assert.h>
 #include "haptic.h"
 #include "music.h"
+#include "hiscore.h"
+#include "initials.h"
 
 #define HBL_FREQ 3146876
 #define VBL_FREQ 60
@@ -60,6 +62,9 @@ static int vga_startaddr;
 static uint8_t vga_gcregs[8];
 static int vga_gcindex;
 static uint8_t vga_latch[4];
+static int hiscore_addr=-1;
+static uint8_t hiscore_nvs_state[16*4];
+
 
 static int keycode[]={
 	0,
@@ -76,10 +81,17 @@ static int keycode[]={
 
 uint8_t portin(uint16_t port) {
 	if (port==0x60) {
-		int kc=keycode[key_pressed&0x7F];
-		if (key_pressed&INPUT_RELEASE) kc|=0x80;
-		key_pressed=0;
-		printf("Keycode %x\n", kc);
+		int kc;
+		if (key_pressed&INPUT_RAWSCANCODE) {
+			kc=key_pressed&0xff;
+			printf("Keycode (from raw) %x\n", kc);
+			key_pressed=0;
+		} else {
+			kc=keycode[key_pressed&0x7F];
+			if (key_pressed&INPUT_RELEASE) kc|=0x80;
+			key_pressed=0;
+			printf("Keycode %x\n", kc);
+		}
 		return kc;
 	} else if (port==0x61) {
 		return 0; //nothing wrong
@@ -245,6 +257,9 @@ static pref_type_t prefs={
 	.s_mode=0
 };
 
+#define FILEHANDLE_HISCORE 10
+static char hiscore_file[9]={0};
+
 static void hook_interrupt_call(uint8_t intr) {
 //	printf("Intr 0x%X\n", intr);
 //	dump_regs();
@@ -261,15 +276,51 @@ static void hook_interrupt_call(uint8_t intr) {
 	} else if (intr==0x21 && (REG_AX>>8)==0x3B) {
 		printf("Set current dir\n");
 		cpu.cf=0;
-	} else if (intr==0x21 && (REG_AX>>8)==0x3D) {
-		printf("Open file\n");
-		cpu.cf=1;
+	} else if (intr==0x21 && ((REG_AX>>8)==0x3C || (REG_AX>>8)==0x3D)) {
+		//we handle open/create the same here
+		int adr_name=(REG_DS<<4)+REG_DX;
+		char file[256]={0};
+		for (int i=0; i<255; i++) {
+			file[i]=cpu_addr_space_read8(adr_name+i);
+			if (file[i]==0) break;
+		}
+		printf("Open file %s\n", file);
+		cpu.cf=0; //assume success
+		if (strlen(file)>3 && strcasecmp(&file[strlen(file)-3], ".hi")==0) {
+			REG_AX=FILEHANDLE_HISCORE;
+			printf("Is hiscore file.\n");
+			strcpy(hiscore_file, &file[strlen(file)-9]);
+		} else {
+			cpu.cf=1;
+			REG_AX=2; //file not found
+		}
 	} else if (intr==0x21 && (REG_AX>>8)==0x3E) {
 		printf("Close file\n");
-		cpu.cf=1;
+		cpu.cf=0; //whatever
 	} else if (intr==0x21 && (REG_AX>>8)==0x3F) {
 		printf("Read from file\n");
+		int addr_data=(REG_DS<<4)+REG_DX;
+		int len=REG_CX;
 		cpu.cf=1;
+		if (REG_BX==FILEHANDLE_HISCORE) {
+			hiscore_addr=addr_data; //save the address as this stays consistent
+			hiscore_get(hiscore_file, hiscore_nvs_state);
+			for (int i=0; i<REG_CX; i++) cpu_addr_space_write8(addr_data+i, hiscore_nvs_state[i]);
+			cpu.cf=0;
+			REG_AX=len;
+		}
+	} else if (intr==0x21 && (REG_AX>>8)==0x3F) {
+		printf("Write to file");
+		int adr_data=(REG_DS<<4)+REG_DX;
+		int len=REG_CX;
+		cpu.cf=1;
+		if (REG_BX==FILEHANDLE_HISCORE) {
+			uint8_t hiscore[16*4];
+			for (int i=0; i<REG_CX; i++) hiscore[i]=cpu_addr_space_read8(adr_data);
+			hiscore_put(hiscore_file, hiscore);
+			cpu.cf=0;
+			REG_AX=len;
+		}
 	} else if (intr==0x10 && (REG_AX>>8)==0) {
 		printf("Set video mode %x\n", REG_AX&0xff);
 	} else if (intr==0x65) {
@@ -283,6 +334,7 @@ static void hook_interrupt_call(uint8_t intr) {
 		//ax00x12: text input
 		//others: simply return scan code without side effects
 		//Returns scan code in ax
+		printf("Key handler, ax=%04X\n", REG_AX);
 		if (REG_AX==0x200) {
 			int adr=(REG_ES<<4)+REG_BX;
 			uint8_t *p=(uint8_t*)&prefs;
@@ -291,7 +343,6 @@ static void hook_interrupt_call(uint8_t intr) {
 			}
 		}
 		REG_AX=0;
-		printf("Key handler\n");
 		dump_regs();
 	} else if (intr==0x33) {
 		//Mouse interrupt
@@ -439,6 +490,7 @@ void midframe_cb() {
 			c++;
 		}
 	}
+	initials_handle_vram(vram);
 	gfx_show(vram, pal, vga_ver, 607, vga_startaddr/(320/4));
 	if (cb_raster_seg!=0) force_callback(cb_raster_seg, cb_raster_off, 0);
 }
@@ -461,6 +513,28 @@ void pit_tick_evt_cb() {
 	intcall86(8); //pit interrupt
 }
 
+//PF is a DOS-game in the sense that it expect the user to exit out of the program if they're
+//done with it, and only writes the highscore to disk when that happens. In an embedded device,
+//the user is way more likely to simply hard turn off the device. As such, we check every so 
+//often to see if the highscores changed and write to NVS if it did.
+//We get the address from when the highscores are read; PF does not move that data around so
+//we can re-use it to keep track of the highscore state as PF knows it.
+void check_hiscore() {
+	if (hiscore_addr<0) return;
+
+	hiscore_get(hiscore_file, hiscore_nvs_state);
+	int changed=0;
+	for (int i=0; i<64; i++) {
+		uint8_t b=cpu_addr_space_read8(hiscore_addr+i);
+		if (b!=hiscore_nvs_state[i]) {
+			hiscore_nvs_state[i]=b;
+			changed=1;
+		}
+	}
+	if (changed) hiscore_put(hiscore_file, hiscore_nvs_state);
+}
+
+
 int optimize_segs[]={
 	0x59800, 0x5F800, 0x10000, 0x5F400,
 	0x59400, 0x21000, 0x5BC00, 0x5EC00,
@@ -480,6 +554,7 @@ void emu_run(const char *prg, const char *mod) {
 	assert(r);
 
 	schedule_add(vblank_evt_cb, 1000000/VBL_FREQ, 1, "vblank");
+	schedule_add(check_hiscore, 1000000, 1, "hiscore");
 
 	int len=load_mz(prg, 0x10000);
 	pf_vars_init(0x10000, len);
@@ -510,8 +585,10 @@ void emu_run(const char *prg, const char *mod) {
 			printf("Jingle callback returned 0x%X\n", ret);
 		}
 		int key;
-		while ((key=gfx_get_key())>0) {
-			if (key==INPUT_SPRING) {
+		while((key=gfx_get_key())>0) {
+			if (initials_handle_button(key)) {
+				//don't handle key as initials handler already handled it
+			} else if (key==INPUT_SPRING) {
 				mouse_down=1;
 			} else if (key==(INPUT_SPRING|INPUT_RELEASE)) {
 				mouse_down=0;
@@ -532,6 +609,13 @@ void emu_run(const char *prg, const char *mod) {
 				intcall86(9);
 			}
 		}
+		int sc;
+		while ((sc=initials_getscancode())>0) {
+			while (cpu.ifl==0) trace_run_cpu(10);
+			key_pressed=sc|INPUT_RAWSCANCODE;
+			intcall86(9);
+		}
+
 		//Figure out if we need to have a haptic event.
 		int vx, vy;
 		pf_vars_get_ball_speed(&vx, &vy);

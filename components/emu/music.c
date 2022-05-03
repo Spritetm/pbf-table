@@ -14,7 +14,7 @@ static int *music_mixbuf;
 static int music_mixbuf_len;
 static int music_mixbuf_left;
 static const void *mmapped_module;
-static int volume=256;
+static int volume;
 
 
 #define SAMP_RATE 22000

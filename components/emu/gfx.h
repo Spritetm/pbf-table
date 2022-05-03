@@ -10,6 +10,7 @@
 #define INPUT_F4 8
 #define INPUT_TEST 9
 #define INPUT_RELEASE 0x80
+#define INPUT_RAWSCANCODE 0x100
 
 void gfx_init();
 int gfx_get_key();

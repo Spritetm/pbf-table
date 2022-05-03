@@ -2,7 +2,7 @@
 
 
 idf_component_register(SRCS emu.c cpu.c cpu_addr_space.c load_exe.c scheduler.c trace.c
-        ibxm/ibxm.c pf_vars.c music.c menu.c
+        ibxm/ibxm.c pf_vars.c music.c menu.c initials.c font.c
         REQUIRES log
         INCLUDE_DIRS "." "ibxm" )
 
