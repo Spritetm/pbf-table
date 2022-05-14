@@ -81,3 +81,6 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll) {
 	last_frame=ts;
 }
 
+int gfx_get_plunger() {
+	return 0; //no analog plunger supported
+}

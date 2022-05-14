@@ -121,3 +121,7 @@ void backboard_show(int image) {
 	//stub
 	printf("backboard_show: %d\n", image);
 }
+
+int gfx_get_plunger() {
+	return 0; //no analog plunger supported
+}

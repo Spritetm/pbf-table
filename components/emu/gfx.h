@@ -14,6 +14,7 @@
 
 void gfx_init();
 int gfx_get_key();
+int gfx_get_plunger();
 void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll);
 int gfx_frame_done();
 

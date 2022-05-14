@@ -48,8 +48,14 @@ static const pf_misc_vars_t misc_vars_initial={
 	.addplayers=255,
 };
 
+//actually the plastic material def
+static const uint16_t springpos_hook[]={
+	10000,10000/4,400,-500,38,0,0,0
+};
+
 static int pf_ball_vars_pos=0;
 static int pf_misc_vars_pos=0;
+static int pf_springpos_var_pos=0;
 
 #define SEARCH_CHUNK 128 //should be close to 2x the largest struct to look for
 void pf_vars_init(int offset_start, int len) {
@@ -68,6 +74,10 @@ void pf_vars_init(int offset_start, int len) {
 				pf_misc_vars_pos=p+i;
 				printf("Found pf_misc_vars_pos: %x\n", pf_misc_vars_pos);
 			}
+			if (memcmp(&mem[i], springpos_hook, 16)==0) {
+				pf_springpos_var_pos=p+i+16+10;
+				printf("Found pf_springpos_var_pos: %x\n", pf_springpos_var_pos);
+			}
 			if (pf_ball_vars_pos!=0 && pf_misc_vars_pos!=0) break; //found
 		}
 		memmove(&mem[0], &mem[SEARCH_CHUNK/2], SEARCH_CHUNK/2);
@@ -76,6 +86,10 @@ void pf_vars_init(int offset_start, int len) {
 			mem[(SEARCH_CHUNK/2)+i]=cpu_addr_space_read8((SEARCH_CHUNK/2)+p+i);
 		}
 	}
+}
+
+void pf_vars_set_springpos(uint8_t springpos) {
+	cpu_addr_space_write8(pf_springpos_var_pos, springpos);
 }
 
 int pf_vars_get_flip_enabled() {

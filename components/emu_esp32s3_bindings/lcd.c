@@ -10,6 +10,7 @@
 #include "driver/spi_master.h"
 #include <string.h>
 #include <lcdbackboard.h>
+#include "io.h"
 
 static const char *TAG = "rgblcd";
 
@@ -394,16 +395,11 @@ static bool frame_done(struct esp_lcd_panel_t *panel, esp_lcd_rgb_panel_event_da
 }
 
 void lcd_init(void) {
-	gpio_config_t bk_gpio_config = {
-		.mode = GPIO_MODE_OUTPUT,
-		.pin_bit_mask = (1ULL << 14)|(1ULL<<PIN_NUM_DATAR0)|(1ULL<<PIN_NUM_DATAB0)
-	};
-	ESP_ERROR_CHECK(gpio_config(&bk_gpio_config));
-	gpio_set_level(14, 1);
+	io_lcd_reset(1);
 	vTaskDelay(pdMS_TO_TICKS(10));
-	gpio_set_level(14, 0);
+	io_lcd_reset(0);
 	vTaskDelay(pdMS_TO_TICKS(10));
-	gpio_set_level(14, 1);
+	io_lcd_reset(1);
 	vTaskDelay(pdMS_TO_TICKS(10));
 
 	ESP_LOGI(TAG, "Install RGB panel driver");

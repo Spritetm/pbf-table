@@ -336,6 +336,7 @@ static void hook_interrupt_call(uint8_t intr) {
 		//Returns scan code in ax
 		printf("Key handler, ax=%04X\n", REG_AX);
 		if (REG_AX==0x200) {
+			//Only prefs reading seems to be actually needed.
 			int adr=(REG_ES<<4)+REG_BX;
 			uint8_t *p=(uint8_t*)&prefs;
 			for (int i=0; i<sizeof(prefs); i++) {
@@ -521,7 +522,6 @@ void pit_tick_evt_cb() {
 //we can re-use it to keep track of the highscore state as PF knows it.
 void check_hiscore() {
 	if (hiscore_addr<0) return;
-
 	hiscore_get(hiscore_file, hiscore_nvs_state);
 	int changed=0;
 	for (int i=0; i<64; i++) {
@@ -535,6 +535,7 @@ void check_hiscore() {
 }
 
 
+//We read these segs into RAM instead of mapping them in flash cache.
 int optimize_segs[]={
 	0x59800, 0x5F800, 0x10000, 0x5F400,
 	0x59400, 0x21000, 0x5BC00, 0x5EC00,
@@ -615,7 +616,11 @@ void emu_run(const char *prg, const char *mod) {
 			key_pressed=sc|INPUT_RAWSCANCODE;
 			intcall86(9);
 		}
-
+		int pl=gfx_get_plunger();
+		if (pl!=0) {
+			mouse_btn=1;
+			pf_vars_set_springpos(pl);
+		}
 		//Figure out if we need to have a haptic event.
 		int vx, vy;
 		pf_vars_get_ball_speed(&vx, &vy);
