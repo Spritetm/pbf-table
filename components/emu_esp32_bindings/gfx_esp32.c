@@ -84,3 +84,13 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll) {
 int gfx_get_plunger() {
 	return 0; //no analog plunger supported
 }
+
+int gfx_frame_done() {
+	return (last_frame-esp_timer_get_time())>(1000000/60);
+}
+
+
+void backboard_show(int image) {
+	//stub
+	printf("backboard_show: %d\n", image);
+}
