@@ -8,8 +8,8 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 
-#define PIN_NUM_CS	 17
-#define PIN_NUM_DC	 10
+#define PIN_NUM_CS	 7
+#define PIN_NUM_DC	 15
 
 #define PARALLEL_LINES 8
 
@@ -346,7 +346,7 @@ spi_device_handle_t lcdbb_add_to_bus(int spi_bus) {
 	esp_err_t ret;
 	spi_device_handle_t spi;
 	spi_device_interface_config_t devcfg={
-		.clock_speed_hz=40*1000*1000,			//Clock out at 26 MHz
+		.clock_speed_hz=20*1000*1000,			//Clock out at 26 MHz
 		.mode=0,								//SPI mode 0
 		.spics_io_num=PIN_NUM_CS,				//CS pin
 		.queue_size=7,							//We want to be able to queue 7 transactions at a time

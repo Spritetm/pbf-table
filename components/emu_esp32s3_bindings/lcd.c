@@ -18,42 +18,39 @@ static const char *TAG = "rgblcd";
 //////////////////// Please update the following configuration according to your LCD spec //////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define EXAMPLE_LCD_PIXEL_CLOCK_HZ	   (20 * 1000 * 1000)
-#define PIN_NUM_HSYNC		   45
-#define PIN_NUM_VSYNC		   11
-#define PIN_NUM_DE			   48
-#define PIN_NUM_PCLK		   12
-#define PIN_NUM_DATAB0		   10  // B0
-#define PIN_NUM_DATA0		   0  // B1
-#define PIN_NUM_DATA1		   9  // B2
-#define PIN_NUM_DATA2		   35  // B3 - note, relocate
-#define PIN_NUM_DATA3		   46  // B4
-#define PIN_NUM_DATA4		   36  // B5 - note, relocate
-#define PIN_NUM_DATA5		   3  // G0
-#define PIN_NUM_DATA6		   37 // G1 - note, relocate
-#define PIN_NUM_DATA7		   8 // G2
-#define PIN_NUM_DATA8		   38 // G3
-#define PIN_NUM_DATA9		   18 // G4
-#define PIN_NUM_DATA10		   39 // G5
-#define PIN_NUM_DATAR0		   17 // R0
-#define PIN_NUM_DATA11		   6 // R1
-#define PIN_NUM_DATA12		   16 // R2
-#define PIN_NUM_DATA13		   5 // R3
-#define PIN_NUM_DATA14		   15 // R4
-#define PIN_NUM_DATA15		   4 // R5
+#define PIN_NUM_HSYNC		   0
+#define PIN_NUM_VSYNC		   35
+#define PIN_NUM_DE			   36
+#define PIN_NUM_PCLK		   37
+#define PIN_NUM_DATA0		   45  // B1
+#define PIN_NUM_DATA1		   48  // B2
+#define PIN_NUM_DATA2		   47  // B3 - note, relocate
+#define PIN_NUM_DATA3		   21  // B4
+#define PIN_NUM_DATA4		   14  // B5 - note, relocate
+#define PIN_NUM_DATA5		   13  // G0
+#define PIN_NUM_DATA6		   12 // G1 - note, relocate
+#define PIN_NUM_DATA7		   11 // G2
+#define PIN_NUM_DATA8		   10 // G3
+#define PIN_NUM_DATA9		   9 // G4
+#define PIN_NUM_DATA10		   46 // G5
+#define PIN_NUM_DATA11		   3 // R1
+#define PIN_NUM_DATA12		   8 // R2
+#define PIN_NUM_DATA13		   18 // R3
+#define PIN_NUM_DATA14		   17 // R4
+#define PIN_NUM_DATA15		   16 // R5
 #define PIN_NUM_DISP_EN		   -1
 
 #define LCD_HOST SPI2_HOST
 #define PIN_NUM_MISO -1
-#define PIN_NUM_MOSI 21
-#define PIN_NUM_CLK	 13
-#define PIN_NUM_CS	 47
+#define PIN_NUM_MOSI 4
+#define PIN_NUM_CLK	 5
+#define PIN_NUM_CS	 6
 
 // The pixel number in horizontal and vertical
 #define EXAMPLE_LCD_V_RES			   640
 #define EXAMPLE_LCD_H_RES			   360
 
-static void lcd_spi(spi_device_handle_t spi, int dc, uint8_t word)
-{
+static void lcd_spi(spi_device_handle_t spi, int dc, uint8_t word) {
 	esp_err_t ret;
 	spi_transaction_t t;
 	memset(&t, 0, sizeof(t));		//Zero out the transaction
@@ -480,6 +477,8 @@ void lcd_init(void) {
 	spi_device_handle_t bbspi=lcdbb_add_to_bus(LCD_HOST);
 	//Initialize the LCD
 	lcd_init_panel(spi);
+	ESP_LOGI(TAG, "Main LCD init done.");
 	//Initialize the backboard LCD
 	lcdbb_init(bbspi);
+	ESP_LOGI(TAG, "Backboard LCD init done.");
 }

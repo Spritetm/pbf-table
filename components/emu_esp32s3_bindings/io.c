@@ -1,15 +1,21 @@
 #include "driver/i2c.h"
 #include "driver/adc.h"
+#include "esp_log.h"
 #include "io.h"
 
+#define TAG "io"
+
+#define GPIO_SDA 44 //=rxd0
+#define GPIO_SCL 1
+#define PLUNGER_ADC ADC1_CHANNEL_1
+
 #define I2C_PORT 0
-#define TCA_ADR 0x27
+//#define TCA_ADR 0x27
+#define TCA_ADR 0x20
 
-#define BTN_LEFT 3
-#define BTN_START 1
-#define BTN_PLUNGER 2
-#define BTN_RIGHT 0
-
+#define BTN_LEFT 6
+#define BTN_START 5
+#define BTN_RIGHT 7
 #define LCD_RESET 4
 
 static int out_data=0;
@@ -17,9 +23,9 @@ static int out_data=0;
 void io_init() {
 	i2c_config_t conf = {
 		.mode = I2C_MODE_MASTER,
-		.sda_io_num = 40,
+		.sda_io_num = GPIO_SDA,
 		.sda_pullup_en = GPIO_PULLUP_ENABLE,
-		.scl_io_num = 41,
+		.scl_io_num = GPIO_SCL,
 		.scl_pullup_en = GPIO_PULLUP_ENABLE,
 		.master.clk_speed = 100*1000,
 	};
@@ -29,13 +35,15 @@ void io_init() {
 	//Configure outputs
 	uint8_t w[2];
 	w[0]=0x03; //config
-	w[1]=(1<<BTN_LEFT)|(1<<BTN_RIGHT)|(1<<BTN_START)|(1<<BTN_PLUNGER);
+	w[1]=(1<<BTN_LEFT)|(1<<BTN_RIGHT)|(1<<BTN_START);
 	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, TCA_ADR, w, 2, pdMS_TO_TICKS(100)));
 	w[0]=1; //output
 	w[1]=0;
 	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, TCA_ADR, w, 2, pdMS_TO_TICKS(100)));
 
-	ESP_ERROR_CHECK(adc2_config_channel_atten(ADC2_CHANNEL_3, ADC_ATTEN_DB_2_5));
+	ESP_ERROR_CHECK(adc1_config_channel_atten(PLUNGER_ADC, ADC_ATTEN_DB_2_5));
+	ESP_ERROR_CHECK(adc1_config_width(ADC_WIDTH_BIT_12));
+	ESP_LOGI(TAG, "IO inited");
 }
 
 void io_lcd_reset(int reset) {
@@ -52,7 +60,6 @@ int io_get_btn_bitmap() {
 	if (!(r&(1<<BTN_LEFT))) v|=BM_LEFT;
 	if (!(r&(1<<BTN_RIGHT))) v|=BM_RIGHT;
 	if (!(r&(1<<BTN_START))) v|=BM_START;
-	if (!(r&(1<<BTN_PLUNGER))) v|=BM_PLUNGER;
 	return v;
 }
 
@@ -61,9 +68,9 @@ int s_last_adc_out=4096;
 int io_get_plunger() {
 	int out;
 	int r=0;
-	ESP_ERROR_CHECK(adc2_get_raw(ADC2_CHANNEL_3, ADC_WIDTH_BIT_12, &out));
+	out=adc1_get_raw(PLUNGER_ADC);
 	if (out > s_last_adc_out+700) {
-		r=((out-1000)*32)/2000;
+		r=((out-500)*32)/1000;
 		if (r>32) r=32;
 		printf("Plunger: %d --> %d\n", out, r);
 	}

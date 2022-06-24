@@ -6,6 +6,9 @@
 #include "music.h"
 #include "emu.h"
 #include "mmap_file.h"
+#include "esp_log.h"
+
+#define TAG "menu"
 
 static void show_table_fade(const uint8_t *vd, int table, int fade) {
 	const int vram_sz=256*1024;
@@ -56,9 +59,11 @@ void menu_start() {
 	int table=0;
 	show_table(vramsnapshots, 0, 1);
 	backboard_show(BBIMG_TABLE(0));
+	ESP_LOGI(TAG, "In main menu");
 	while(1) {
 		int k=gfx_get_key();
 		if (k==INPUT_F1) {
+			ESP_LOGI(TAG, "Running table %d", table);
 			music_unload();
 			emu_run(prgs[table], mods[table]);
 		} else if (k==INPUT_LFLIP) {

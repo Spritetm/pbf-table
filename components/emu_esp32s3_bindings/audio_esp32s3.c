@@ -9,8 +9,10 @@
 #include "gfx.h"
 #include "soc/rtc.h"
 #include "soc/rtc_periph.h"
+#include "esp_log.h"
 static SemaphoreHandle_t audio_mux;
 
+#define TAG "audio"
 
 //typedef void(*audio_cb_t)(void* userdata, uint8_t* stream, int len);
 audio_cb_t audio_cb;
@@ -28,14 +30,15 @@ void audio_unlock() {
 
 //Something is wrong here, as the audio plays way too fast.
 void audio_task(void *arg) {
-	uint16_t snd_in[SND_CHUNKSZ]={0};
-	uint32_t snd_out[SND_CHUNKSZ]={0};
+	int16_t snd_in[SND_CHUNKSZ]={0};
+	int32_t snd_out[SND_CHUNKSZ]={0};
 	while (1) {
 		xSemaphoreTake(audio_mux, portMAX_DELAY);
 		audio_cb(NULL, (uint8_t*)snd_in, sizeof(snd_in));
 		xSemaphoreGive(audio_mux);
 		for (int i=0; i<SND_CHUNKSZ; i++) {
-			int v=(int)snd_in[i];
+			int v=snd_in[i];
+//			v=v/8; //HACK! Volume
 			snd_out[i]=(v<<16)|(v);
 		}
 		size_t written;
@@ -59,6 +62,10 @@ void audio_init(int samprate, audio_cb_t cb) {
 	};
 	const i2s_pin_config_t pin_config = {
 		.data_out_num=42,
+		.mck_io_num= -1,
+		.bck_io_num = -1,
+		.ws_io_num = -1,
+		.data_in_num = -1
 	};
 	//install and start i2s driver
 	i2s_driver_install(0, &i2s_config, 0, NULL);
@@ -67,4 +74,5 @@ void audio_init(int samprate, audio_cb_t cb) {
 	audio_mux=xSemaphoreCreateMutex();
 	audio_cb=cb;
 	xTaskCreatePinnedToCore(&audio_task, "snd", 32*1024, NULL, 3, NULL, 1);
+	ESP_LOGI(TAG, "Audio inited.");
 }

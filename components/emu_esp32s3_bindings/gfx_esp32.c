@@ -12,6 +12,8 @@
 #include "cpu_addr_space.h"
 #include "io.h"
 
+#define TAG "gfx"
+
 static SemaphoreHandle_t rdy_sem;
 
 void gfxinit_task(void *arg) {
@@ -19,6 +21,7 @@ void gfxinit_task(void *arg) {
 	lcd_init();
 
 	xSemaphoreGive(rdy_sem);
+	ESP_LOGI(TAG, "GFX inited.");
 	vTaskDelete(NULL);
 }
 

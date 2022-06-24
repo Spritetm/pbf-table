@@ -7,6 +7,10 @@
 #define HAPTIC_EVT_RFLIPPER 1
 #define HAPTIC_EVT_BALL 2
 
+#define GPIO_FIN_H 41
+#define GPIO_RIN_H 40
+#define GPIO_FIN_V 39
+#define GPIO_RIN_V 38
 
 //duty cycle [-100..100]
 static void set_duty(int duty_cycle) {
@@ -48,8 +52,8 @@ void haptic_init() {
 		.duty_mode = MCPWM_DUTY_MODE_0,
 		.counter_mode = MCPWM_UP_COUNTER,
 	};
-	ESP_ERROR_CHECK(mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, 1));
-	ESP_ERROR_CHECK(mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0B, 2));
+	ESP_ERROR_CHECK(mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, GPIO_FIN_H));
+	ESP_ERROR_CHECK(mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0B, GPIO_RIN_H));
 	ESP_ERROR_CHECK(mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config));
 	ESP_ERROR_CHECK(mcpwm_start(MCPWM_UNIT_0, MCPWM_TIMER_0));
 	const esp_timer_create_args_t timer_cfg={

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-esptool.py --chip esp32 --port "/dev/ttyUSB1" --baud $((921600/4)) \
+esptool.py --chip esp32-s3 --port "/dev/ttyACM6" --baud $((921600/4)) \
 	--before default_reset --after hard_reset write_flash  \
 	0x190000 ../data/TABLE1.PRG \
 	0x230000 ../data/TABLE2.PRG \
