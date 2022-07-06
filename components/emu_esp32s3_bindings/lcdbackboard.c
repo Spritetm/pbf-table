@@ -22,7 +22,7 @@ typedef struct {
 	uint8_t databytes; //No of data in data; bit 7 = delay after set; 0xFF = end of cmds.
 } lcd_init_cmd_t;
 
-DRAM_ATTR const lcd_init_cmd_t init_cmds[17]={
+const lcd_init_cmd_t init_cmds[17]={
 	{0xC8, {0xFF, 0x93, 0x42}, 3},
 	{0xb6, {0x0a, 0xE0}, 2},
 	{0x36, {0x08}, 1},
@@ -98,7 +98,9 @@ static void lcd_init_controller(spi_device_handle_t spi) {
 	//Send all the commands
 	while (lcd_init_cmds[cmd].databytes!=0xff) {
 		lcd_cmd(spi, lcd_init_cmds[cmd].cmd);
-		lcd_data(spi, lcd_init_cmds[cmd].data, lcd_init_cmds[cmd].databytes&0x1F);
+		uint8_t d[16];
+		memcpy(d, lcd_init_cmds[cmd].data, 16);
+		lcd_data(spi, d, lcd_init_cmds[cmd].databytes&0x1F);
 		if (lcd_init_cmds[cmd].databytes&0x80) {
 			vTaskDelay(pdMS_TO_TICKS(100));
 		}
