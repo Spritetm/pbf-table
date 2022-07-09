@@ -1,3 +1,13 @@
+//Hiscore bindings. We read/write them to NVS.
+/*
+ * ----------------------------------------------------------------------------
+ * "THE BEER-WARE LICENSE" (Revision 42):
+ * Jeroen Domburg <jeroen@spritesmods.com> wrote this file. As long as you retain 
+ * this notice you can do whatever you want with this stuff. If we meet some day, 
+ * and you think this stuff is worth it, you can buy me a beer in return. 
+ * ----------------------------------------------------------------------------
+ */
+
 #include <string.h>
 #include "esp_system.h"
 #include "nvs_flash.h"
@@ -8,6 +18,7 @@ void hiscore_get(const char *file, uint8_t *data) {
 	for (int i=0; i<64; i+=16) {
 		memset(&data[i], 0, 16);
 		data[i+11]=i/16+1;
+		//hehe :)
 		data[i+12]='A';
 		data[i+13]='S';
 		data[i+14]='S';

@@ -1,0 +1,13 @@
+
+Licenses:
+- Fake86 CPU emulator: GPL
+- ibxm mod-player license: 3-clause BSD
+- Rest of the firmware, PCB artwork, case design: Beer-ware
+- Sources in original_pbf_src: Unknown / no license. Reproduced here under
+  the assumption it's okay given it's also available at
+  https://github.com/historicalsource/pinballfantasies and presumably
+  put there by a rightsholder.
+- Binaries of Pinball Fantasies: Not included. Buy your own from
+  gog.com or elsewhere. Given we do not modify the binaries and buying it
+  gives you the right to run them, I imagine there's no license violation
+  in using them here.

@@ -1,4 +1,6 @@
 /*
+  This is modified from an old (and already modified) version of:
+
   Fake86: A portable, open-source 8086 PC emulator.
   Copyright (C)2010-2013 Mike Chambers
 	    (C)2020      Gabor Lenart "LGB"

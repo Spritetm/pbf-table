@@ -1,3 +1,14 @@
+//Audio driver. Because the S3 doesn't have a DAC, we use PDM (delta-sigma) output,
+//combined with an external analog Sallen-Key lowpass filter. This should actually
+//give a better output than the 8-bit DAC in the ESP32.
+/*
+ * ----------------------------------------------------------------------------
+ * "THE BEER-WARE LICENSE" (Revision 42):
+ * Jeroen Domburg <jeroen@spritesmods.com> wrote this file. As long as you retain 
+ * this notice you can do whatever you want with this stuff. If we meet some day, 
+ * and you think this stuff is worth it, you can buy me a beer in return. 
+ * ----------------------------------------------------------------------------
+ */
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
@@ -28,7 +39,6 @@ void audio_unlock() {
 
 #define SND_CHUNKSZ 1024
 
-//Something is wrong here, as the audio plays way too fast.
 void audio_task(void *arg) {
 	int16_t snd_in[SND_CHUNKSZ]={0};
 	int32_t snd_out[SND_CHUNKSZ]={0};
@@ -48,7 +58,9 @@ void audio_task(void *arg) {
 
 
 void audio_init(int samprate, audio_cb_t cb) {
-
+	//Note I2S thinks we send both a left and right sample at half the sample
+	//rate. As we discard the WS signal, we actually send two samples at the
+	//exact sample rate.
 	i2s_config_t i2s_config = {
 		.mode = I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_PDM,
 		.sample_rate = samprate/2,
@@ -58,7 +70,7 @@ void audio_init(int samprate, audio_cb_t cb) {
 		.intr_alloc_flags = 0,
 		.dma_desc_num = 2,
 		.dma_frame_num = 1024,
-		.use_apll = 1,
+		.use_apll = 1, //not sure if this is needed, given the fact the S3 doesn't have an APLL
 	};
 	const i2s_pin_config_t pin_config = {
 		.data_out_num=42,
