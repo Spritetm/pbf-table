@@ -1,4 +1,4 @@
-#Note: this is for the ESP32 build.
+#Note: this is for the ESP32S3 build.
 
 idf_build_get_property(target IDF_TARGET)
 

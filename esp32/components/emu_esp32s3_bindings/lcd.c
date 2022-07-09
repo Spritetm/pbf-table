@@ -364,8 +364,9 @@ static bool IRAM_ATTR fill_fb(void *bounce_buf, int pos_px, int len_bytes, void 
 	int margin=360-320;
 	for (int y=0; y<len_px/360; y++) {
 		for (int i=0; i<margin/2; i++) *out++=0;
-		if (ypos+y<32) {
+		if (ypos+y<32 || ypos+y>607) {
 			//Don't draw DMD; we already show that on the backboard display.
+			//Also don't draw lower bit of vram; there's nothing there.
 			for (int x=0; x<320; x++) *out++=0;
 		} else {
 			for (int x=0; x<320; x++) {

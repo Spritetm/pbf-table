@@ -17,6 +17,8 @@
 #include "esp_system.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#include "hiscore.h"
+#include "font.h"
 
 #define PIN_NUM_CS	 7
 #define PIN_NUM_DC	 15
@@ -194,6 +196,7 @@ static QueueHandle_t lcd_evtq;
 typedef struct {
 	const uint8_t *data;
 	int height;
+	const char *hiscore_file;
 } images_t;
 
 extern const uint8_t img_loading_rgb_start[] asm("_binary_loading_rgb_start");
@@ -202,15 +205,14 @@ extern const uint8_t img_table1_rgb_start[] asm("_binary_table1_rgb_start");
 extern const uint8_t img_table2_rgb_start[] asm("_binary_table2_rgb_start");
 extern const uint8_t img_table3_rgb_start[] asm("_binary_table3_rgb_start");
 extern const uint8_t img_table4_rgb_start[] asm("_binary_table4_rgb_start");
-extern const uint8_t font[] asm("_binary_font_bin_start");
 
 static const images_t images[]={
-	{&img_pf_rgb_start[0], 320},
-	{&img_loading_rgb_start[0], 320},
-	{&img_table1_rgb_start[0], 160},
-	{&img_table2_rgb_start[0], 160},
-	{&img_table3_rgb_start[0], 160},
-	{&img_table4_rgb_start[0], 160}, //don't ask
+	{&img_pf_rgb_start[0], 320, NULL},
+	{&img_loading_rgb_start[0], 320, NULL},
+	{&img_table1_rgb_start[0], 160, "table1.hi"},
+	{&img_table2_rgb_start[0], 160, "table2.hi"},
+	{&img_table3_rgb_start[0], 160, "table3.hi"},
+	{&img_table4_rgb_start[0], 160, "table4.hi"},
 };
 
 uint8_t fade(int a, int b, int fade) {
@@ -272,6 +274,55 @@ static void put_dmd(spi_device_handle_t spi, uint8_t *bf, uint32_t *pal, uint16_
 	}
 }
 
+static void put_char_line(uint16_t *mem, int c, int y) {
+	uint8_t p=pf_dmd_font[c*13+y];
+	if (y>=13) return;
+	for (int b=0x80; b!=0; b>>=1) {
+		if (p&b) *mem=0xe3fb;
+		mem++;
+	}
+}
+
+static void show_hiscore(spi_device_handle_t spi, int img, uint16_t *line_a, uint16_t *line_b) {
+	const char *hifile=images[img].hiscore_file;
+	if (hifile==NULL) return;
+	uint8_t hiscores[64];
+	hiscore_get(hifile, hiscores);
+
+	uint16_t *line=line_a;
+
+	for (int yy=0; yy<16*4; yy+=PARALLEL_LINES) {
+		uint16_t *p=line;
+		for (int y=0; y<PARALLEL_LINES; y++) {
+			memset(p, 0, 320*sizeof(uint16_t));
+			uint8_t *hiline=&hiscores[16*((yy+y)/16)];
+			int nonzero=0;
+			for (int i=0; i<12; i++) {
+				if (hiline[i]!=0) nonzero=1;
+				if (nonzero) put_char_line(&p[8*i]+(7*8), hiline[i], (y+yy)%16);
+			}
+			for (int i=0; i<3; i++) {
+				put_char_line(&p[8*i+(20*8)], hiline[i+12]-'A'+10, (y+yy)%16);
+			}
+			p+=320;
+		}
+		send_line_finish(spi);
+		send_lines(spi, yy+168, line);
+		if (line==line_a) line=line_b; else line=line_a; //flip
+	}
+}
+
+void clear_hiscore_area(spi_device_handle_t spi, uint16_t *line_a, uint16_t *line_b) {
+	uint16_t *line=line_a;
+	for (int yy=0; yy<(240-160); yy+=PARALLEL_LINES) {
+		memset(line, 0, 320*sizeof(uint16_t)*PARALLEL_LINES);
+		send_line_finish(spi);
+		send_lines(spi, yy+160, line);
+		if (line==line_a) line=line_b; else line=line_a; //flip
+	}
+}
+
+
 void lcdbb_task(void *arg) {
 	spi_device_handle_t spi=(spi_device_handle_t)arg;
 	uint16_t *line_a, *line_b, *line;
@@ -288,14 +339,18 @@ void lcdbb_task(void *arg) {
 		send_lines(spi, y, line);
 	}
 	int cur_img=0;
-
+	int need_clear_hiscore_area=0;
 	while(1) {
 		lcd_evt_t evt;
 		xQueueReceive(lcd_evtq, &evt, portMAX_DELAY);
 		if (evt.evt_type==EVT_TYPE_BBIMG) {
 			fade_bbimg(spi, cur_img, evt.img, line_a, line_b);
+			show_hiscore(spi, evt.img, line_a, line_b);
+			need_clear_hiscore_area=1;
 			cur_img=evt.img;
 		} else if (evt.evt_type==EVT_TYPE_DMD) {
+			if (need_clear_hiscore_area) clear_hiscore_area(spi, line_a, line_b);
+			need_clear_hiscore_area=0;
 			put_dmd(spi, evt.vptr, evt.pal, line_a, line_b);
 		}
 	}
