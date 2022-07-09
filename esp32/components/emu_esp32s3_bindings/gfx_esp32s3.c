@@ -47,9 +47,9 @@ void gfx_init() {
 int old_btns;
 
 int gfx_get_key() {
-	const int keys[]={INPUT_LFLIP,INPUT_RFLIP,INPUT_F1,INPUT_SPRING};
+	const int keys[]={INPUT_LFLIP,INPUT_RFLIP,INPUT_F1,INPUT_SPRING, INPUT_TILT};
 	int new_btns=io_get_btn_bitmap();
-	for (int i=0; i<4; i++) {
+	for (int i=0; i<5; i++) {
 		if ((new_btns^old_btns)&(1<<i)) {
 			int r=keys[i];
 			if (old_btns&(1<<i)) r|=INPUT_RELEASE;

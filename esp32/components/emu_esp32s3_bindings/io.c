@@ -13,6 +13,7 @@
 #include "driver/adc.h"
 #include "esp_log.h"
 #include "io.h"
+#include "mpu6050.h"
 
 #define TAG "io"
 
@@ -38,7 +39,7 @@ void io_init() {
 		.sda_pullup_en = GPIO_PULLUP_ENABLE,
 		.scl_io_num = GPIO_SCL,
 		.scl_pullup_en = GPIO_PULLUP_ENABLE,
-		.master.clk_speed = 100*1000,
+		.master.clk_speed = 400*1000,
 	};
 	ESP_ERROR_CHECK(i2c_param_config(I2C_PORT, &conf));
 	ESP_ERROR_CHECK(i2c_driver_install(I2C_PORT, I2C_MODE_MASTER, 0, 0, 0));
@@ -51,6 +52,7 @@ void io_init() {
 	w[0]=1; //output
 	w[1]=0;
 	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, TCA_ADR, w, 2, pdMS_TO_TICKS(100)));
+	mpu6050_init(I2C_PORT);
 
 	ESP_ERROR_CHECK(adc1_config_channel_atten(PLUNGER_ADC, ADC_ATTEN_DB_2_5));
 	ESP_ERROR_CHECK(adc1_config_width(ADC_WIDTH_BIT_12));
@@ -71,6 +73,19 @@ int io_get_btn_bitmap() {
 	if (!(r&(1<<BTN_LEFT))) v|=BM_LEFT;
 	if (!(r&(1<<BTN_RIGHT))) v|=BM_RIGHT;
 	if (!(r&(1<<BTN_START))) v|=BM_START;
+
+	mpu6050_accel_tp accel[128];
+	int n=mpu6050_read_fifo(I2C_PORT, accel, 128);
+	int max=0;
+	for (int i=0; i<n; i++) {
+		if (accel[i].accely < max) max=accel[i].accely;
+	}
+	//fwiw, 1g is about 2000
+	if (max<-3000) {
+		v|=BM_TILT;
+		printf("TILT!\n");
+	}
+
 	return v;
 }
 
