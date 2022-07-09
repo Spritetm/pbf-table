@@ -27,6 +27,8 @@ int gfx_get_key();
 int gfx_get_plunger();
 void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll);
 int gfx_frame_done();
+void gfx_wait_frame_done(); //used in menu, no need to be precise
+void gfx_enable_dmd(int enable); //used to disable dmd in menu
 
 typedef void(*audio_cb_t)(void* userdata, uint8_t* stream, int len);
 void audio_init(int samprate, audio_cb_t cb);

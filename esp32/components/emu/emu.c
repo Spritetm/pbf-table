@@ -26,6 +26,7 @@
 #include "music.h"
 #include "hiscore.h"
 #include "initials.h"
+#include "prefs.h"
 
 #define HBL_FREQ 3146876
 #define VBL_FREQ 60
@@ -237,35 +238,18 @@ void init_intr_table() {
 	cpu_addr_space_map_cb(0xf8000, 2048, intr_table_writefn, abort_readfn, NULL);
 }
 
-int cb_raster_int_line=0;
-int cb_raster_seg=0, cb_raster_off=0;
-int cb_blank_seg=0, cb_blank_off=0;
-int cb_jingle_seg=0, cb_jingle_off=0;
+static int cb_raster_int_line=0;
+static int cb_raster_seg=0, cb_raster_off=0;
+static int cb_blank_seg=0, cb_blank_off=0;
+static int cb_jingle_seg=0, cb_jingle_off=0;
 
-int mouse_x=0;
-int mouse_y=0;
-int mouse_btn=0;
-int mouse_down=0;
+static int mouse_x=0;
+static int mouse_y=0;
+static int mouse_btn=0;
+static int mouse_down=0;
 
-//this is what's indicated as 'togglaren' in the sources
-typedef struct __attribute__((packed)) {
-	uint8_t s_balls; //3 (0) or 5 (1). Default is 3
-	uint8_t s_angle; //high (0) or low (1). Default is high.
-	uint8_t s_scrolling; //medium (1), soft (2), hard (0). Default is medium.
-	uint8_t s_im; //ingame music, on (0) or off (1). Default is on.
-	uint8_t s_resolution; //reso, normal (0) or high (1). Default is normal.
-	uint8_t s_mode; //color mode, color (0) or mono (1). Default is color.
-} pref_type_t;
-
-
-static pref_type_t prefs={
-	.s_balls=0,
-	.s_angle=0,
-	.s_scrolling=1,
-	.s_im=0,
-	.s_resolution=0,
-	.s_mode=0
-};
+//Default prefs, in case prefs_read is unimplemented
+static pref_type_t prefs=PREFS_DEFAULT;
 
 #define FILEHANDLE_HISCORE 10
 static char hiscore_file[9]={0};
@@ -348,8 +332,8 @@ static void hook_interrupt_call(uint8_t intr) {
 		if (REG_AX==0x200) {
 			//Only prefs reading seems to be actually needed.
 			int adr=(REG_ES<<4)+REG_BX;
-			uint8_t *p=(uint8_t*)&prefs;
-			for (int i=0; i<sizeof(prefs); i++) {
+			uint8_t *p=(uint8_t*)&prefs.pbf_prefs;
+			for (int i=0; i<sizeof(prefs.pbf_prefs); i++) {
 				cpu_addr_space_write8(adr++, *p++);
 			}
 		}
@@ -563,6 +547,7 @@ void emu_run(const char *prg, const char *mod) {
 	init_vga_mem();
 	int r=music_load(mod);
 	assert(r);
+	prefs_read(&prefs);
 
 	schedule_add(vblank_evt_cb, 1000000/VBL_FREQ, 1, "vblank");
 	schedule_add(check_hiscore, 1000000, 1, "hiscore");
@@ -574,8 +559,10 @@ void emu_run(const char *prg, const char *mod) {
 		cpu_addr_space_write8(optimize_segs[i], cpu_addr_space_read8(optimize_segs[i]));
 		i++;
 	}
+	gfx_enable_dmd(1);
 
 	int old_vx=0, old_vy=0;
+	int last_plunger_val=0;
 	while(1) {
 		schedule_run(1000000/VBL_FREQ); //1 frame
 #if DO_TRACE
@@ -618,6 +605,13 @@ void emu_run(const char *prg, const char *mod) {
 				while (cpu.ifl==0) trace_run_cpu(10);
 				key_pressed=key;
 				intcall86(9);
+				if (pf_vars_get_flip_enabled()) {
+					if (key==INPUT_LFLIP) {
+						haptic_event(HAPTIC_EVT_LFLIPPER, 0, 127);
+					} else if (key==INPUT_RFLIP) {
+						haptic_event(HAPTIC_EVT_RFLIPPER, 0, 127);
+					}
+				}
 			}
 		}
 		int sc;
@@ -627,9 +621,19 @@ void emu_run(const char *prg, const char *mod) {
 			intcall86(9);
 		}
 		int pl=gfx_get_plunger();
-		if (pl!=0) {
-			mouse_btn=1;
-			pf_vars_set_springpos(pl);
+		if (pl>last_plunger_val) {
+			//wait for an even larger plunger val next?
+			last_plunger_val=pl;
+		} else {
+			//plunger val went down; last_plunger_val is the max.
+			if (last_plunger_val>prefs.plunger_min) {
+				int plv=((last_plunger_val-prefs.plunger_min)*40)/(prefs.plunger_max-prefs.plunger_min);
+				printf("Plunger: raw val %d min %d max %d end result %d\n", last_plunger_val, prefs.plunger_min, prefs.plunger_max, plv);
+				mouse_btn=1;
+				if (plv>32) plv=32; //max the sw supports
+				pf_vars_set_springpos(plv);
+			}
+			last_plunger_val=pl;
 		}
 		//Figure out if we need to have a haptic event.
 		int vx, vy;

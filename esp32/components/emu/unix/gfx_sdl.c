@@ -126,6 +126,12 @@ int gfx_frame_done() {
 	return 1;
 }
 
+void gfx_wait_frame_done() {
+}
+
+void gfx_enable_dmd(int enable){
+}
+
 void backboard_show(int image) {
 	//stub
 	printf("backboard_show: %d\n", image);

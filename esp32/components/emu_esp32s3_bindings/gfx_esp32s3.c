@@ -74,6 +74,17 @@ int gfx_frame_done() {
 	return (lcd_get_frame()!=current_frame);
 }
 
+//hacky
+void gfx_wait_frame_done() {
+	while (lcd_get_frame()==current_frame) vTaskDelay(2);
+}
+
+int dmd_enabled=0;
+void gfx_enable_dmd(int enable) {
+	dmd_enabled=enable;
+}
+
+
 #define FRAME_TIME (1000000/60)
 
 void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll) {
@@ -87,7 +98,7 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll) {
 	}
 	fps_frames++;
 
-	lcd_show(buf, pal, h, w, scroll-32);
+	lcd_show(buf, pal, h, w, scroll-32, dmd_enabled);
 	current_frame=lcd_get_frame();
 	last_frame=ts;
 }

@@ -378,8 +378,8 @@ static bool IRAM_ATTR fill_fb(void *bounce_buf, int pos_px, int len_bytes, void 
 	return false;
 }
 
-void lcd_show(uint8_t *buf, uint32_t *pal, int w, int h, int scroll) {
-	lcdbb_handle_dmd(buf, pal);
+void lcd_show(uint8_t *buf, uint32_t *pal, int w, int h, int scroll, int show_dmd) {
+	if (show_dmd) lcdbb_handle_dmd(buf, pal);
 	cur_fb=buf;
 	cur_pitch=w;
 	for (int i=0; i<256; i++) {

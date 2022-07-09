@@ -74,17 +74,7 @@ int io_get_btn_bitmap() {
 	return v;
 }
 
-int s_last_adc_out=4096;
 
 int io_get_plunger() {
-	int out;
-	int r=0;
-	out=adc1_get_raw(PLUNGER_ADC);
-	if (out > s_last_adc_out+700) {
-		r=((out-500)*32)/1000;
-		if (r>32) r=32;
-		printf("Plunger: %d --> %d\n", out, r);
-	}
-	s_last_adc_out=out;
-	return r;
+	return adc1_get_raw(PLUNGER_ADC);
 }
