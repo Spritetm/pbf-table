@@ -1,0 +1,28 @@
+Drill report for pbf-mainpcb.kicad_pcb
+Created on Sun 12 Jun 2022 07:50:53 PM CST
+
+Copper Layer Stackup:
+    =============================================================
+    L1 :  F.Cu                      front
+    L2 :  B.Cu                      back
+
+
+Drill file 'pbf-mainpcb-PTH.drl' contains
+    plated through holes:
+    =============================================================
+    T1  0.400mm  0.0157"  (106 holes)
+    T2  0.450mm  0.0177"  (2 holes)  (with 2 slots)
+    T3  0.750mm  0.0295"  (14 holes)
+    T4  1.000mm  0.0394"  (12 holes)
+
+    Total plated holes count 134
+
+
+Drill file 'pbf-mainpcb-NPTH.drl' contains
+    unplated through holes:
+    =============================================================
+    T1  0.600mm  0.0236"  (2 holes)
+    T2  0.900mm  0.0354"  (2 holes)
+    T3  1.200mm  0.0472"  (1 hole)
+
+    Total unplated holes count 5

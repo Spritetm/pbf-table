@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name "Espressif")(type "KiCad")(uri "/home/jeroen/pcb/espressf-kicad-lib/footprints/Espressif.pretty")(options "")(descr ""))
+)
