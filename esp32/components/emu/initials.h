@@ -12,4 +12,5 @@
 void initials_handle_vram(uint8_t *vram);
 //returns 1 if buttons should not be passed to system
 int initials_handle_button(int btn);
+//sends -1 if no scancode available, otherwise the (raw) scancode.
 int initials_getscancode();

@@ -9,6 +9,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t s_mode; //color mode, color (0) or mono (1). Default is color.
 } pref_type_pbf_prefs_t;
 
+//Main prefs struct. Stores Pinball Fantasies prefs as well as stuff for the emulator.
 typedef struct __attribute__((packed)) {
 	int plunger_min;
 	int plunger_max;

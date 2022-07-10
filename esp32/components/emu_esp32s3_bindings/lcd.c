@@ -24,10 +24,7 @@
 
 static const char *TAG = "rgblcd";
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////// Please update the following configuration according to your LCD spec //////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define EXAMPLE_LCD_PIXEL_CLOCK_HZ	   (20 * 1000 * 1000)
+#define LCD_PIXEL_CLOCK_HZ	   (20 * 1000 * 1000)
 #define PIN_NUM_HSYNC		   0
 #define PIN_NUM_VSYNC		   35
 #define PIN_NUM_DE			   36
@@ -57,9 +54,10 @@ static const char *TAG = "rgblcd";
 #define PIN_NUM_CS	 6
 
 // The pixel number in horizontal and vertical
-#define EXAMPLE_LCD_V_RES			   640
-#define EXAMPLE_LCD_H_RES			   360
+#define LCD_V_RES			   640
+#define LCD_H_RES			   360
 
+//Send a command or data word to the main LCD.
 static void lcd_spi(spi_device_handle_t spi, int dc, uint8_t word) {
 	esp_err_t ret;
 	spi_transaction_t t;
@@ -71,7 +69,9 @@ static void lcd_spi(spi_device_handle_t spi, int dc, uint8_t word) {
 	assert(ret==ESP_OK);			//Should have had no issues.
 }
 
-
+//Init sequence for the main LCD. Obtained from the guy I bought it from.
+//There's deeper magic in there, I have no idea what half of the writes
+//do, but it works.
 static void lcd_init_panel(spi_device_handle_t spi) {
 	lcd_spi(spi, 0, 0x1); //sw reset
 	vTaskDelay(pdMS_TO_TICKS(500));
@@ -349,10 +349,12 @@ static void lcd_init_panel(spi_device_handle_t spi) {
 	vTaskDelay(pdMS_TO_TICKS(20));
 }
 
+//Current frame buffer pointer, palette and pitch, for use in actual displaying
 static uint8_t *cur_fb;
 static uint16_t cur_pal[256];
 static int cur_pitch;
 
+//Fill a bounce buffer with 16-bit data based on the VGA image and palette.
 //note: assumes buffers that start at a line and are an integer number
 //of lines
 static bool IRAM_ATTR fill_fb(void *bounce_buf, int pos_px, int len_bytes, void *arg) {
@@ -363,26 +365,30 @@ static bool IRAM_ATTR fill_fb(void *bounce_buf, int pos_px, int len_bytes, void 
 	uint8_t *p=&cur_fb[cur_pitch*ypos];
 	int margin=360-320;
 	for (int y=0; y<len_px/360; y++) {
+		//black margin on the right side
 		for (int i=0; i<margin/2; i++) *out++=0;
 		if (ypos+y<32 || ypos+y>607) {
 			//Don't draw DMD; we already show that on the backboard display.
 			//Also don't draw lower bit of vram; there's nothing there.
 			for (int x=0; x<320; x++) *out++=0;
 		} else {
+			//fill with pixel data
 			for (int x=0; x<320; x++) {
 				*out++=cur_pal[*p++];
 			}
 		}
 		p+=(cur_pitch-320);
+		//black margin on the left side
 		for (int i=margin/2; i<margin; i++) *out++=0;
 	}
 	return false;
 }
 
-void lcd_show(uint8_t *buf, uint32_t *pal, int w, int h, int scroll, int show_dmd) {
+void lcd_show(uint8_t *buf, uint32_t *pal, int w, int h, int show_dmd) {
 	if (show_dmd) lcdbb_handle_dmd(buf, pal);
 	cur_fb=buf;
 	cur_pitch=w;
+	//Convert from 32-bit R8G8B8 palette to 16-bit R5G6B5 palette for display
 	for (int i=0; i<256; i++) {
 		int r=(pal[i]>>16)&0xff;
 		int g=(pal[i]>>8)&0xff;
@@ -391,7 +397,7 @@ void lcd_show(uint8_t *buf, uint32_t *pal, int w, int h, int scroll, int show_dm
 	}
 }
 
-int frame_ctr;
+static int frame_ctr;
 
 int lcd_get_frame() {
 	return frame_ctr;
@@ -440,9 +446,9 @@ void lcd_init(void) {
 			PIN_NUM_DATA15,
 		},
 		.timings = {
-			.pclk_hz = EXAMPLE_LCD_PIXEL_CLOCK_HZ,
-			.h_res = EXAMPLE_LCD_H_RES,
-			.v_res = EXAMPLE_LCD_V_RES,
+			.pclk_hz = LCD_PIXEL_CLOCK_HZ,
+			.h_res = LCD_H_RES,
+			.v_res = LCD_V_RES,
 			// The following parameters should refer to LCD spec
 			.hsync_back_porch = 58,
 			.hsync_front_porch = 4,
@@ -469,7 +475,7 @@ void lcd_init(void) {
 		.sclk_io_num=PIN_NUM_CLK,
 		.quadwp_io_num=-1,
 		.quadhd_io_num=-1,
-		.max_transfer_sz=1000000 //todo: tweak
+		.max_transfer_sz=64000 //todo: tweak to whatever the backbox lcd really requires
 	};
 	spi_device_interface_config_t devcfg={
 		.clock_speed_hz=10*1000,
@@ -489,7 +495,7 @@ void lcd_init(void) {
 	//Initialize the LCD
 	lcd_init_panel(spi);
 	ESP_LOGI(TAG, "Main LCD init done.");
-	//Initialize the backboard LCD
+	//Initialize the backboard LCD (which is attached to the same SPI bus)
 	lcdbb_init(bbspi);
 	ESP_LOGI(TAG, "Backboard LCD init done.");
 }

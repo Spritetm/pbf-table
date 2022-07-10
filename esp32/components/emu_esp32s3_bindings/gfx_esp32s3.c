@@ -25,6 +25,8 @@
 
 static SemaphoreHandle_t rdy_sem;
 
+//We init gfx as a separate task because its interrupts need to be bound
+//to core 1.
 void gfxinit_task(void *arg) {
 	io_init();
 	lcd_init();
@@ -34,11 +36,9 @@ void gfxinit_task(void *arg) {
 	vTaskDelete(NULL);
 }
 
-
-
 void gfx_init() {
 	rdy_sem=xSemaphoreCreateBinary();
-	//We really want the gfx to be on the other core.
+	//We really want the gfx interrupt to be on the other core.
 	xTaskCreatePinnedToCore(&gfxinit_task, "gfx", 16*1024, NULL, 2, NULL, 1);
 	xSemaphoreTake(rdy_sem, portMAX_DELAY);
 	vSemaphoreDelete(rdy_sem);
@@ -47,6 +47,7 @@ void gfx_init() {
 int old_btns;
 
 int gfx_get_key() {
+	//Grab the button bitmap and convert to make/break codes.
 	const int keys[]={INPUT_LFLIP,INPUT_RFLIP,INPUT_F1,INPUT_SPRING, INPUT_TILT};
 	int new_btns=io_get_btn_bitmap();
 	for (int i=0; i<5; i++) {
@@ -60,32 +61,27 @@ int gfx_get_key() {
 	return 0;
 }
 
+static uint64_t last_frame;
 
+static uint64_t fps_ts;
+static int fps_frames;
 
-uint64_t last_frame;
-
-uint64_t fps_ts;
-int fps_frames;
-int skipped;
-
-int current_frame=0;
+static int current_frame=0;
 
 int gfx_frame_done() {
 	return (lcd_get_frame()!=current_frame);
 }
 
-//hacky
+//hacky but good enough as it's only used as a delay in the main meny
 void gfx_wait_frame_done() {
 	while (lcd_get_frame()==current_frame) vTaskDelay(2);
 }
 
-int dmd_enabled=0;
+static int dmd_enabled=0;
+
 void gfx_enable_dmd(int enable) {
 	dmd_enabled=enable;
 }
-
-
-#define FRAME_TIME (1000000/60)
 
 void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll) {
 	uint64_t ts=esp_timer_get_time();
@@ -98,7 +94,7 @@ void gfx_show(uint8_t *buf, uint32_t *pal, int h, int w, int scroll) {
 	}
 	fps_frames++;
 
-	lcd_show(buf, pal, h, w, scroll-32, dmd_enabled);
+	lcd_show(buf, pal, h, w, dmd_enabled);
 	current_frame=lcd_get_frame();
 	last_frame=ts;
 }

@@ -69,7 +69,7 @@ int load_mz(const char *exefile, int load_start_addr) {
 	cpu.segregs[reges]=(load_start_addr-256)/0x10;
 	cpu.segregs[regcs]=(load_start_addr/0x10)+hdr->cs;
 	cpu.segregs[regss]=(load_start_addr/0x10)+hdr->ss;
-	cpu.regs.wordregs[regax]=0; //should be related to psp, but we don't emu that.
+	cpu.regs.wordregs[regax]=0; //should be related to psp, but we don't emulate that.
 	cpu.regs.wordregs[regsp]=hdr->sp;
 	cpu.ip=hdr->ip;
 	printf("Exe load done. CPU is set up to start at %04X:%04X (%06X).\n", cpu.segregs[regcs], cpu.ip, cpu.segregs[regcs]*0x10+cpu.ip);

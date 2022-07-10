@@ -1,4 +1,4 @@
-//Hiscore get/put routines
+//Hiscore bindings. We read/write them to NVS.
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):
@@ -18,6 +18,7 @@ void hiscore_get(const char *file, uint8_t *data) {
 	for (int i=0; i<64; i+=16) {
 		memset(&data[i], 0, 16);
 		data[i+11]=i/16+1;
+		//hehe :)
 		data[i+12]='A';
 		data[i+13]='S';
 		data[i+14]='S';

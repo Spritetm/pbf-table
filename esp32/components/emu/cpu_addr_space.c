@@ -1,4 +1,4 @@
-//Lazily allocate address space of the x86 emulator to things
+//Lazily allocate address space of the x86 emulator
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):

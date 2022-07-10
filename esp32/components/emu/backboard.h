@@ -4,4 +4,5 @@
 #define BBIMG_LOADING 1
 #define BBIMG_TABLE(x) (2+(x))
 
+//Show the given image (BBIMG_*) on the backbox.
 void backboard_show(int img);

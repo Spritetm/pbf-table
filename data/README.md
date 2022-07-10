@@ -17,6 +17,9 @@ Easiest legal way:
 - Enter 'exit' to close dosbox.
 - Remove game.gog.
 
+Note that if you get your datafiles elsewhere and want to run this on an ESP32, you may need
+to modify the filesizes in mmap_file_esp32.c.
+
 # How to rebuild 'table-screens.bin'
 
 The file is included in the Git repo as I imagine some screenshots easily fall under 'fair use',

@@ -23,6 +23,7 @@
 
 #define TAG "menu"
 
+//Show a table in flash on the main LCD, but fade-to-black the palette with a given amount.
 static void show_table_fade(const uint8_t *vd, int table, int fade) {
 	const int vram_sz=256*1024;
 	const int pal_sz=1024;
@@ -41,6 +42,7 @@ static void show_table_fade(const uint8_t *vd, int table, int fade) {
 	gfx_show(vram, palfaded, 336, 607, 0);
 }
 
+//Fade a table in or out on the main LCD
 static void show_table(const uint8_t *vd, int table, int fade_dir) {
 	int fade;
 	if (fade_dir<0) {
@@ -57,6 +59,7 @@ static void show_table(const uint8_t *vd, int table, int fade_dir) {
 	}
 }
 
+//The program files and audio for the various tables.
 const char *prgs[4]={"TABLE1.PRG", "TABLE2.PRG", "TABLE3.PRG", "TABLE4.PRG"};
 const char *mods[4]={"TABLE1.MOD", "TABLE2.MOD", "TABLE3.MOD", "TABLE4.MOD"};
 
@@ -78,6 +81,8 @@ void menu_start() {
 	printf("In main menu\n");
 	uint8_t btn[16]={0};
 	while(1) {
+		//The config menu is shown when lflip+rflip is held and start is pressed. It takes a while
+		//because the logic first processes the lflip and rflip events.
 		int k=gfx_get_key();
 		if (k&0x80) {
 			btn[k&15]=0;
@@ -93,6 +98,8 @@ void menu_start() {
 		if (k==INPUT_F1) {
 			printf("Menu: Running table %d\n", table);
 			music_unload();
+			//technically, we should munmap() the vramsnapshots, but that can corrupt the
+			//image while the emu is starting... we'll just 'leak' that for now.
 			emu_run(prgs[table], mods[table]);
 		} else if (k==INPUT_LFLIP) {
 			backboard_show(BBIMG_TABLE((table-1)&3));
@@ -110,6 +117,7 @@ void menu_start() {
 
 const char *font_chars="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ?()-";
 
+//Put a character to VRAM on the given coordinates in the given color.
 void config_putchar(uint8_t *vram, int x, int y, char c, int col) {
 	int pos=0;
 	while (font_chars[pos]!=0 && font_chars[pos]!=c) pos++;
@@ -125,12 +133,13 @@ void config_putchar(uint8_t *vram, int x, int y, char c, int col) {
 	}
 }
 
+//Put a string to the main LCD at the given text position in the given color.
 void config_putstr(uint8_t *vram, int x, int y, const char *str, int col) {
 	const char *p=str;
 	while (*p!=0) {
 		config_putchar(vram, x*16, y*28+32, *p, col);
 		x++;
-		if (x>25) {
+		if (x>25) { //overflow; not used, not sure if that number is correct
 			x=0;
 			y++;
 		}
@@ -138,7 +147,10 @@ void config_putstr(uint8_t *vram, int x, int y, const char *str, int col) {
 	}
 }
 
-static int get_plunger_val(uint8_t *vram, uint8_t *pal) {
+//Helper routine to calibrate the plunger. This will get and
+//display the maximum plunger value measured, and will return that when
+//the start button is pressed.
+static int get_plunger_val(uint8_t *vram, uint32_t *pal) {
 	//wait till start release
 	while (gfx_get_key()!=(INPUT_F1|0x80)) gfx_wait_frame_done();
 	config_putstr(vram, 0, 13, "START TO FINISH", 4);
@@ -155,6 +167,7 @@ static int get_plunger_val(uint8_t *vram, uint8_t *pal) {
 	return max;
 }
 
+//Config meny routine
 static void config_menu() {
 	//Allocate custom fb/pal
 	uint8_t *vram=calloc(336*607, sizeof(uint8_t));
@@ -172,6 +185,7 @@ static void config_menu() {
 		char buf[16];
 		memset(vram, 0, 336*607);
 
+		//Show config menu settings
 		config_putstr(vram, 0, 0, "CONFIG", 7);
 		config_putstr(vram, 1, 2, "BALL COUNT", 4);
 		config_putstr(vram, 5, 3, prefs.pbf_prefs.s_balls?"5":"3", 2);
@@ -185,13 +199,16 @@ static void config_menu() {
 		config_putstr(vram, 5, 9, buf, 2);
 		config_putstr(vram, 1, 10, "EXIT", 4);
 
+		//selection indicator
 		config_putstr(vram, 0, 2+choice*2, "-", 7);
 		gfx_show(vram, pal, 336, 607, 0);
 
+		//wait for keypress
 		int k;
 		while ((k=gfx_get_key())==0) {
 			gfx_wait_frame_done();
 		}
+		//handle keypress
 		if (k==INPUT_RFLIP) {
 			choice++;
 			if (choice>=5) choice=0;
@@ -199,6 +216,7 @@ static void config_menu() {
 			choice--;
 			if (choice<0) choice=4;
 		} else if (k==INPUT_F1) {
+			//change selected setting
 			if (choice==0) {
 				prefs.pbf_prefs.s_balls^=1;
 			} else if (choice==1) {
@@ -210,12 +228,13 @@ static void config_menu() {
 				config_putstr(vram, 0, 12, "PULL PLUNGER MOST", 4);
 				prefs.plunger_max=get_plunger_val(vram, pal);
 			} else if (choice==4) {
+				//exit menu
 				break;
 			}
 			prefs_write(&prefs);
 		}
 	}
-	//wait till start release
+	//Menu should exit. Wait till start button release
 	while (gfx_get_key() != (INPUT_F1|0x80)) gfx_wait_frame_done();
 	free(vram);
 	free(pal);

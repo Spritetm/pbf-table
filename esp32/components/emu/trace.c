@@ -25,6 +25,7 @@
 
 
 #if USE_BPS
+//Callback for every single existing memory address.
 //Note: this array is pretty large (4M-8M). You don't want this on embedded devices.
 static trace_bp_cb_t *cbs[1024*1024]={0};
 
@@ -41,7 +42,7 @@ void trace_set_bp(int cs, int ip, trace_bp_cb_t cb) {
 }
 
 #else
-
+//tracing disabled: stub
 void set_bp(int addr, trace_bp_cb_t cb) {
 	return;
 }
@@ -60,6 +61,7 @@ static trace_t *tracemem=NULL;
 static int tracepos=0;
 static int do_trace=0;
 
+//Run the CPU for x cycles, include tracing
 void trace_run_cpu(int count) {
 	if (!tracemem) tracemem=calloc(TRACECT, sizeof(trace_t));
 	if (!do_trace) {
@@ -93,6 +95,7 @@ void trace_enable(int ena) {
 
 #else
 
+//stub
 void trace_enable(int ena) {
 	return;
 }

@@ -12,6 +12,9 @@
 #define HAPTIC_EVT_RFLIPPER 1
 #define HAPTIC_EVT_BALL 2
 
+//Initialize haptics.
 void haptic_init();
+
+//Send a haptic event, from the given source and with the given acceleration.
 //Note: accel_x and accel_y are -128..127
 void haptic_event(int event_type, int accel_x, int accel_y);

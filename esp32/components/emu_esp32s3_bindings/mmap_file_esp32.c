@@ -12,6 +12,8 @@
 #include <strings.h>
 #include <esp_partition.h>
 
+//We map DOS files to partitions. This table contains both the mapping
+//as well as the size of the files.
 typedef struct {
 	const char *name;
 	int type;
@@ -30,7 +32,7 @@ const file_t available_files[NO_FILES]={
 	{"TABLE2.MOD", 124, 2, 211912},
 	{"TABLE3.MOD", 124, 3, 219668},
 	{"TABLE4.MOD", 124, 4, 216418},
-	{"INTRO.MOD", 124, 5, 317262},
+	{"INTRO.MOD", 124, 5, 252870},
 	{"table-screens.bin", 125, 1, 1114112},
 };
 
@@ -39,6 +41,7 @@ typedef struct {
 	spi_flash_mmap_handle_t mmap_handle;
 } file_mmap_t;
 
+//Handle for maps
 static file_mmap_t mmaped_files[NO_FILES]={0};
 
 int mmap_file(const char *filename, const void **mem) {
@@ -65,6 +68,9 @@ int mmap_file(const char *filename, const void **mem) {
 }
 
 void munmap_file(void *ptr) {
+	//Check if the pointer passed is the start of any mmaped file. If so, unmap.
+	//Bug: Note that this doesn't work if a file was mapped multiple times. The
+	//rest of the code doesn't do that though.
 	for (int i=0; i<NO_FILES; i++) {
 		if (ptr==mmaped_files[i].adr) {
 			mmaped_files[i].adr=NULL;

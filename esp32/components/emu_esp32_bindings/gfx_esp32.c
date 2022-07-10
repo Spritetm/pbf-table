@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <esp_log.h>
 #include <gfx.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lcd.h"
 #include "driver/gpio.h"
 #include "esp_heap_caps.h"
@@ -99,14 +101,10 @@ int gfx_frame_done() {
 	return (esp_timer_get_time()-last_frame)>(1000000/60);
 }
 
-int gfx_wait_frame_done() {
+void gfx_wait_frame_done() {
 	int delay_us=(1000000/60)-(esp_timer_get_time()-last_frame);
 	if (delay_us<=0) return;
 	vTaskDelay(pdMS_TO_TICKS(delay_us/1000));
-}
-
-void gfx_wait_frame_done() {
-	int ms_delay=last_frame-esp_timer_get_time())
 }
 
 void gfx_enable_dmd(int enable) {

@@ -104,6 +104,8 @@ int replay_get_audio( struct replay *replay, int *mix_buf );
 /* Returns the length of the output buffer required by replay_get_audio(). */
 int calculate_mix_buf_len( int sample_rate );
 
+//Returns 1 if the music has looped since the last call to has_looped.
 int has_looped(struct replay *replay);
 
+//Play a sample on the sfx channel.
 void sfxchan_play(struct replay *replay, int sample, int key, int volume);

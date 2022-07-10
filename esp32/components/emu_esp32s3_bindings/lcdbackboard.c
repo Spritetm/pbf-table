@@ -27,6 +27,7 @@
 
 /*
  The LCD needs a bunch of command/argument values to be initialized. They are stored in this struct.
+ No idea about what the values are, I got them from the store I bought the display from.
 */
 typedef struct {
 	uint8_t cmd;
@@ -56,10 +57,8 @@ const lcd_init_cmd_t init_cmds[17]={
 
 
 /* Send a command to the LCD. Uses spi_device_polling_transmit, which waits
- * until the transfer is complete.
- */
-static void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd)
-{
+until the transfer is complete. */
+static void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd) {
 	esp_err_t ret;
 	spi_transaction_t t;
 	memset(&t, 0, sizeof(t));		//Zero out the transaction
@@ -71,8 +70,7 @@ static void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd)
 }
 
 /* Send data to the LCD. Uses spi_device_polling_transmit, which waits until the
- * transfer is complete.
- */
+transfer is complete */
 static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len) {
 	esp_err_t ret;
 	spi_transaction_t t;
@@ -120,7 +118,7 @@ static void lcd_init_controller(spi_device_handle_t spi) {
 	}
 }
 
-
+//Send PARALLEL_LINES worth of horizontal lines to the display
 static void send_lines(spi_device_handle_t spi, int ypos, uint16_t *linedata) {
 	esp_err_t ret;
 	int x;
@@ -181,6 +179,7 @@ static void send_line_finish(spi_device_handle_t spi) {
 	}
 }
 
+//Event description passed to the display thread.
 #define EVT_TYPE_BBIMG 0
 #define EVT_TYPE_DMD 1
 typedef struct {
@@ -192,11 +191,11 @@ typedef struct {
 
 static QueueHandle_t lcd_evtq;
 
-
+//Description of the images we can display.
 typedef struct {
-	const uint8_t *data;
-	int height;
-	const char *hiscore_file;
+	const uint8_t *data;		//Image data
+	int height;					//Height of image. Image always is full width of the display
+	const char *hiscore_file;	//Associated highscore file if the image is of a table, NULL if not
 } images_t;
 
 extern const uint8_t img_loading_rgb_start[] asm("_binary_loading_rgb_start");
@@ -206,6 +205,7 @@ extern const uint8_t img_table2_rgb_start[] asm("_binary_table2_rgb_start");
 extern const uint8_t img_table3_rgb_start[] asm("_binary_table3_rgb_start");
 extern const uint8_t img_table4_rgb_start[] asm("_binary_table4_rgb_start");
 
+//Image definitions
 static const images_t images[]={
 	{&img_pf_rgb_start[0], 320, NULL},
 	{&img_loading_rgb_start[0], 320, NULL},
@@ -215,10 +215,12 @@ static const images_t images[]={
 	{&img_table4_rgb_start[0], 160, "table4.hi"},
 };
 
+//Interpolate between a and b using fade. Fade is 0-255.
 uint8_t fade(int a, int b, int fade) {
 	return (a*(255-fade)+b*fade)/256;
 }
 
+//Actively fade between the backbox images cur_img and next_img. Line_a and line_b are line buffers.
 void fade_bbimg(spi_device_handle_t spi, int cur_img, int next_img, uint16_t *line_a, uint16_t *line_b) {
 	uint16_t *line=line_a;
 	for (int f=0; f<256+16; f+=16) {
@@ -239,6 +241,7 @@ void fade_bbimg(spi_device_handle_t spi, int cur_img, int next_img, uint16_t *li
 						*p++=(pp>>8)|(pp<<8);
 					}
 				} else {
+					//no more image; show black
 					for (int x=0; x<320; x++) *p++=0;
 				}
 			}
@@ -250,6 +253,7 @@ void fade_bbimg(spi_device_handle_t spi, int cur_img, int next_img, uint16_t *li
 	}
 }
 
+//Take the DMD from the main VGA buffer and show it on the backbox.
 static void put_dmd(spi_device_handle_t spi, uint8_t *bf, uint32_t *pal, uint16_t *line_a, uint16_t *line_b) {
 	uint16_t *line=line_a;
 
@@ -260,6 +264,7 @@ static void put_dmd(spi_device_handle_t spi, uint8_t *bf, uint32_t *pal, uint16_
 			for (int x=0; x<320; x++) {
 				int r,g,b;
 				uint16_t pp;
+				//convert from r8g8b8 to whatever the display needs (byte-swapped r5g6b5) and show
 				r=(pal[pl[0]]>>16)&0xff;
 				g=(pal[pl[0]]>>8)&0xff;
 				b=(pal[pl[0]]>>0)&0xff;
@@ -274,18 +279,24 @@ static void put_dmd(spi_device_handle_t spi, uint8_t *bf, uint32_t *pal, uint16_
 	}
 }
 
+//Helper function: put 8 pixels of a font element of character c at height y to
+//framebuffer memory mem. mem is in the format the LCD wants.
 static void put_char_line(uint16_t *mem, int c, int y) {
 	uint8_t p=pf_dmd_font[c*13+y];
 	if (y>=13) return;
 	for (int b=0x80; b!=0; b>>=1) {
-		if (p&b) *mem=0xe3fb;
+		if (p&b) *mem=0xe3fb; //orange-ey
 		mem++;
 	}
 }
 
+//If we are displaying a table image, we want the empty space below it to be filled with
+//the highscores for the table. This function does that.
 static void show_hiscore(spi_device_handle_t spi, int img, uint16_t *line_a, uint16_t *line_b) {
+	//Grab hiscore file associated with table.
 	const char *hifile=images[img].hiscore_file;
-	if (hifile==NULL) return;
+	if (hifile==NULL) return; //not a table
+	//grab the actual highscores
 	uint8_t hiscores[64];
 	hiscore_get(hifile, hiscores);
 
@@ -296,14 +307,18 @@ static void show_hiscore(spi_device_handle_t spi, int img, uint16_t *line_a, uin
 		for (int y=0; y<PARALLEL_LINES; y++) {
 			memset(p, 0, 320*sizeof(uint16_t));
 			uint8_t *hiline=&hiscores[16*((yy+y)/16)];
-			int nonzero=0;
+			//Show the scores. They're stored as 12 BCD characters, making it easy to display.
+			int nonzero=0; //we don't want to show leading 0s
 			for (int i=0; i<12; i++) {
 				if (hiline[i]!=0) nonzero=1;
+				//First characters of the font are 0-9, so we can directly show the hiscore BCD data.
 				if (nonzero) put_char_line(&p[8*i]+(7*8), hiline[i], (y+yy)%16);
 			}
+			//Show the initials.
 			for (int i=0; i<3; i++) {
 				put_char_line(&p[8*i+(20*8)], hiline[i+12]-'A'+10, (y+yy)%16);
 			}
+			//next line
 			p+=320;
 		}
 		send_line_finish(spi);
@@ -312,6 +327,8 @@ static void show_hiscore(spi_device_handle_t spi, int img, uint16_t *line_a, uin
 	}
 }
 
+//Blanks the area the hiscores were displayed at; used if we need to switch to showing
+//the DMD there.
 void clear_hiscore_area(spi_device_handle_t spi, uint16_t *line_a, uint16_t *line_b) {
 	uint16_t *line=line_a;
 	for (int yy=0; yy<(240-160); yy+=PARALLEL_LINES) {
@@ -322,7 +339,7 @@ void clear_hiscore_area(spi_device_handle_t spi, uint16_t *line_a, uint16_t *lin
 	}
 }
 
-
+//Main backbox LCD task
 void lcdbb_task(void *arg) {
 	spi_device_handle_t spi=(spi_device_handle_t)arg;
 	uint16_t *line_a, *line_b, *line;
@@ -341,22 +358,23 @@ void lcdbb_task(void *arg) {
 	int cur_img=0;
 	int need_clear_hiscore_area=0;
 	while(1) {
+		//Wait for an event.
 		lcd_evt_t evt;
 		xQueueReceive(lcd_evtq, &evt, portMAX_DELAY);
 		if (evt.evt_type==EVT_TYPE_BBIMG) {
+			//Change over to a different backbox image,
 			fade_bbimg(spi, cur_img, evt.img, line_a, line_b);
 			show_hiscore(spi, evt.img, line_a, line_b);
 			need_clear_hiscore_area=1;
 			cur_img=evt.img;
 		} else if (evt.evt_type==EVT_TYPE_DMD) {
+			//Show the DMD
 			if (need_clear_hiscore_area) clear_hiscore_area(spi, line_a, line_b);
 			need_clear_hiscore_area=0;
 			put_dmd(spi, evt.vptr, evt.pal, line_a, line_b);
 		}
 	}
 }
-
-
 
 void backboard_show(int img) {
 	lcd_evt_t evt={
@@ -375,6 +393,7 @@ void lcdbb_handle_dmd(uint8_t *dmdfb, uint32_t *pal) {
 	xQueueSend(lcd_evtq, &evt, 0);
 }
 
+//Attack LCD to SPI bus
 spi_device_handle_t lcdbb_add_to_bus(int spi_bus) {
 	esp_err_t ret;
 	spi_device_handle_t spi;

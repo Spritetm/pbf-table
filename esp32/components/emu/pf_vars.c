@@ -14,6 +14,7 @@
 #include <string.h>
 #include "cpu_addr_space.h"
 
+//These two structs reflect the Pinball Fantasies variables as found in x86 memory
 typedef struct __attribute__((packed)) {
 	uint16_t hitvalue;
 	uint16_t materialbit;
@@ -43,7 +44,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t addplayers; //255
 } pf_misc_vars_t;
 
-//These are the values of the structs after the exe is loaded but hasn't executed yet.
+//These are the values of those structs after the exe is loaded but hasn't executed yet.
 static const pf_ball_vars_t ball_vars_initial={
 	.sc_x=165,
 	.sc_y=450,
@@ -58,7 +59,7 @@ static const pf_misc_vars_t misc_vars_initial={
 	.addplayers=255,
 };
 
-//actually the plastic material def
+//actually the plastic material def before the springpos
 static const uint16_t springpos_hook[]={
 	10000,10000/4,400,-500,38,0,0,0
 };
@@ -68,13 +69,18 @@ static int pf_misc_vars_pos=0;
 static int pf_springpos_var_pos=0;
 
 #define SEARCH_CHUNK 128 //should be close to 2x the largest struct to look for
+//Find the position of the structs using their initial values.
 void pf_vars_init(int offset_start, int len) {
 	uint8_t mem[SEARCH_CHUNK];
 	int p=offset_start; //p is offset where mem[0] points to
+	//We read a chunk of SEARCH_CHUNK data from x86 memory, then find the start of the
+	//structs in the first half. When we're done, we move the 2nd half to the 1st, read
+	//more data into the 2nd half and seach in the first half again, etc etc.
 	for (int i=0; i<SEARCH_CHUNK; i++) {
 		mem[i]=cpu_addr_space_read8(p+i);
 	}
 	while (p<offset_start+len) {
+		//look for the structs
 		for (int i=0; i<SEARCH_CHUNK/2; i++) {
 			if (memcmp(&mem[i], &ball_vars_initial, sizeof(ball_vars_initial))==0) {
 				pf_ball_vars_pos=p+i;
@@ -88,8 +94,9 @@ void pf_vars_init(int offset_start, int len) {
 				pf_springpos_var_pos=p+i+16+10;
 				printf("Found pf_springpos_var_pos: %x\n", pf_springpos_var_pos);
 			}
-			if (pf_ball_vars_pos!=0 && pf_misc_vars_pos!=0) break; //found
+			if (pf_ball_vars_pos!=0 && pf_misc_vars_pos!=0 && pf_springpos_var_pos!=0) break; //found
 		}
+		//Move 2nd half to 1st half; re-fill 2nd half.
 		memmove(&mem[0], &mem[SEARCH_CHUNK/2], SEARCH_CHUNK/2);
 		p+=SEARCH_CHUNK/2;
 		for (int i=0; i<SEARCH_CHUNK/2; i++) {
@@ -98,14 +105,17 @@ void pf_vars_init(int offset_start, int len) {
 	}
 }
 
+//Set spring position
 void pf_vars_set_springpos(uint8_t springpos) {
 	cpu_addr_space_write8(pf_springpos_var_pos, springpos);
 }
 
+//Check if flippers work if the buttons are pressed
 int pf_vars_get_flip_enabled() {
 	return cpu_addr_space_read8(pf_misc_vars_pos+offsetof(pf_misc_vars_t, allowflip));
 }
 
+//Get ball velocity
 void pf_vars_get_ball_speed(int *x, int *y) {
 	int16_t xx, yy;
 	xx=cpu_addr_space_read8(pf_ball_vars_pos+offsetof(pf_ball_vars_t, x_hast));

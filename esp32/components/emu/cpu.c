@@ -1266,7 +1266,7 @@ int IRAM_ATTR exec86(uint32_t execloops) {
 
 	uint8_t docontinue;
 	static uint16_t firstip;
-	static uint16_t trap_toggle = 0;
+//	static uint16_t trap_toggle = 0;
 	running=1;
 
 	// This seems not to be used anywhere, so commented out for now.
