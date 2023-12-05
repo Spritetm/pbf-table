@@ -11,7 +11,10 @@ for graphics, input, and audio playback for various situations.
 
 There are three builds for the firmware:
 
-- Host build
+- Host build. For this, make sure you have the SDL2 development libraries
+  installed and run ``make`` ``in the esp32/components/emu`` folder. You
+  should get an ``emu`` binary using that. Use lshift, rshift, F1 and 
+  enter to control the emulator.
 - ESP32 build for ESP-Wrover-Kit
   This needs a wrover with >=8MiB of flash (and >=2MiB of psram). Use
   ``idf.py set-target esp32`` to select this and build and flash 
