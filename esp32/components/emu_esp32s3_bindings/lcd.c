@@ -357,7 +357,7 @@ static int cur_pitch;
 //Fill a bounce buffer with 16-bit data based on the VGA image and palette.
 //note: assumes buffers that start at a line and are an integer number
 //of lines
-static bool IRAM_ATTR fill_fb(void *bounce_buf, int pos_px, int len_bytes, void *arg) {
+static bool IRAM_ATTR fill_fb(esp_lcd_panel_handle_t panel, void *bounce_buf, int pos_px, int len_bytes, void *arg) {
 	if (!cur_fb) return false;
 	int len_px=len_bytes/2;
 	int ypos=pos_px/360;
@@ -403,7 +403,7 @@ int lcd_get_frame() {
 	return frame_ctr;
 }
 
-static bool frame_done(struct esp_lcd_panel_t *panel, esp_lcd_rgb_panel_event_data_t *ev, void * arg) {
+static bool frame_done(esp_lcd_panel_handle_t panel, const esp_lcd_rgb_panel_event_data_t *ev, void * arg) {
 	frame_ctr++;
 	return true;
 }
@@ -458,11 +458,17 @@ void lcd_init(void) {
 			.vsync_pulse_width = 6,
 		},
 		.flags.fb_in_psram = 1, // allocate frame buffer in PSRAM
-		.bounce_buffer_size_px = 360*32, //note: chosen to be an integer, even amount of lines
-		.on_bounce_empty = fill_fb,
-		.on_frame_trans_done = frame_done
+		.bounce_buffer_size_px = 360*32 //note: chosen to be an integer, even amount of lines
 	};
+	
 	ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&panel_config, &panel_handle));
+
+	ESP_LOGI(TAG, "Register event callbacks");
+    esp_lcd_rgb_panel_event_callbacks_t cbs = {
+		.on_bounce_empty = fill_fb,
+        .on_vsync = frame_done
+    };
+	ESP_ERROR_CHECK(esp_lcd_rgb_panel_register_event_callbacks(panel_handle, &cbs, NULL));
 
 	ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
 	ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));

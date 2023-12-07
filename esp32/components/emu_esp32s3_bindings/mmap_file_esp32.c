@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <strings.h>
 #include <esp_partition.h>
+#include <spi_flash_mmap.h>
 
 //We map DOS files to partitions. This table contains both the mapping
 //as well as the size of the files.
