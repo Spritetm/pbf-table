@@ -72,7 +72,7 @@ int gfx_frame_done() {
 	return (lcd_get_frame()!=current_frame);
 }
 
-//hacky but good enough as it's only used as a delay in the main meny
+//hacky but good enough as it's only used as a delay in the main menu
 void gfx_wait_frame_done() {
 	while (lcd_get_frame()==current_frame) vTaskDelay(2);
 }

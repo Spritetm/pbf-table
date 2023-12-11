@@ -458,16 +458,17 @@ void lcd_init(void) {
 			.vsync_pulse_width = 6,
 		},
 		.flags.fb_in_psram = 1, // allocate frame buffer in PSRAM
+		.flags.no_fb = true,
 		.bounce_buffer_size_px = 360*32 //note: chosen to be an integer, even amount of lines
 	};
 	
 	ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&panel_config, &panel_handle));
 
 	ESP_LOGI(TAG, "Register event callbacks");
-    esp_lcd_rgb_panel_event_callbacks_t cbs = {
+	esp_lcd_rgb_panel_event_callbacks_t cbs = {
 		.on_bounce_empty = fill_fb,
-        .on_vsync = frame_done
-    };
+		.on_vsync = frame_done
+	};
 	ESP_ERROR_CHECK(esp_lcd_rgb_panel_register_event_callbacks(panel_handle, &cbs, NULL));
 
 	ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));

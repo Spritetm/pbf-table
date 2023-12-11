@@ -16,7 +16,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-#include <driver/i2s.h>
+#include <driver/i2s_pdm.h>
 #include "gfx.h"
 #include "soc/rtc.h"
 #include "soc/rtc_periph.h"
@@ -29,7 +29,7 @@ static SemaphoreHandle_t audio_mux;
 
 #define TAG "audio"
 
-audio_cb_t audio_cb;
+static audio_cb_t audio_cb;
 
 void audio_lock() {
 	xSemaphoreTake(audio_mux, portMAX_DELAY);
@@ -39,51 +39,39 @@ void audio_unlock() {
 	xSemaphoreGive(audio_mux);
 }
 
-#define SND_CHUNKSZ 1024
+static i2s_chan_handle_t tx_handle;
+
+#define SND_CHUNKSZ 512
 
 void audio_task(void *arg) {
 	int16_t snd_in[SND_CHUNKSZ]={0};
-	int32_t snd_out[SND_CHUNKSZ]={0};
+
 	while (1) {
 		//Get a chunk of audio data from the source...
 		xSemaphoreTake(audio_mux, portMAX_DELAY);
 		audio_cb(NULL, (uint8_t*)snd_in, sizeof(snd_in));
 		xSemaphoreGive(audio_mux);
-		//convert it to what we need
-		for (int i=0; i<SND_CHUNKSZ; i++) {
-			int v=snd_in[i];
-//			v=v/8; //HACK! Volume
-			snd_out[i]=(v<<16)|(v);
-		}
+
 		//send it
-		size_t written;
-		i2s_write(0, snd_out, sizeof(snd_out), &written, portMAX_DELAY);
+		i2s_channel_write(tx_handle, snd_in, sizeof(snd_in), NULL, portMAX_DELAY);
 	}
 }
 
 
 void audio_init(int samprate, audio_cb_t cb) {
-	i2s_config_t i2s_config = {
-		.mode = I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_PDM,
-		.sample_rate = samprate/2, //unsure about this
-		.bits_per_sample = 16,
-		.communication_format = I2S_COMM_FORMAT_STAND_I2S,
-		.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-		.intr_alloc_flags = 0,
-		.dma_desc_num = 2,
-		.dma_frame_num = 1024,
-		.use_apll = 1, //not sure if this is needed, given the fact the S3 doesn't have an APLL
+	i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+	ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &tx_handle, NULL));
+	/* Init the channel into PDM TX mode */
+	i2s_pdm_tx_config_t pdm_tx_cfg = {
+		.clk_cfg = I2S_PDM_TX_CLK_DEFAULT_CONFIG(samprate),
+		.slot_cfg = I2S_PDM_TX_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+		.gpio_cfg = {
+			.clk = -1,
+			.dout = GPIO_NUM_42,
+		},
 	};
-	const i2s_pin_config_t pin_config = {
-		.data_out_num=42,
-		.mck_io_num= -1,
-		.bck_io_num = -1,
-		.ws_io_num = -1,
-		.data_in_num = -1
-	};
-	//install and start i2s driver
-	i2s_driver_install(0, &i2s_config, 0, NULL);
-	i2s_set_pin(0, &pin_config);
+	ESP_ERROR_CHECK(i2s_channel_init_pdm_tx_mode(tx_handle, &pdm_tx_cfg));
+	ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
 
 	audio_mux=xSemaphoreCreateMutex();
 	audio_cb=cb;
