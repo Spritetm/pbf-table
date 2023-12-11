@@ -3426,6 +3426,11 @@
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid 728ae780-36e2-4899-8b49-61cce11f6ef5)
   )
+  (text "NOTE: U9 MUST HAVE QUAD PSRAM, NOT OCTAL\nAn ESP32-S3-WROOM-1-N8R2 or -N16R2 will\nwork. OCTAL PSRAM WILL NOT FUNCTION HERE"
+    (at 230.505 73.66 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid 72f9ca44-e610-4bd3-966e-44ffbe0067ad)
+  )
   (text "Accelerometer" (at 83.82 157.48 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid 765a276e-0089-4d09-b280-63178344d44a)

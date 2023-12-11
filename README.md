@@ -54,6 +54,10 @@ for the final backboard, it interfaces with a 2.3" 320x240 LCD. ``pcb-backboard`
 is a previous iteration of this; it has an 1.5" 240x240 LCD on it; it 
 is included for reference only.
 
+Note: You must use an ESP32-S3 module that has 2 or more megabyte of
+QUAD PSRAM onboard. A module with octal PSRAM (or octal flash) will
+not function, as it needs GPIOs that are used for other things.
+
 # Components
 
 Most of the components are indicated on the PCBs, but some are connected
