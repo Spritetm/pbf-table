@@ -53,7 +53,8 @@ void audio_task(void *arg) {
 		xSemaphoreGive(audio_mux);
 
 		//send it
-		i2s_channel_write(tx_handle, snd_in, sizeof(snd_in), NULL, portMAX_DELAY);
+		size_t bytes_written=0;
+		i2s_channel_write(tx_handle, snd_in, sizeof(snd_in), &bytes_written, portMAX_DELAY);
 	}
 }
 
