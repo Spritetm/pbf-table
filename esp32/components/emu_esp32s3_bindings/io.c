@@ -22,8 +22,6 @@
 #define PLUNGER_ADC ADC1_CHANNEL_1
 
 #define I2C_PORT 0
-//#define TCA_ADR 0x27
-#define TCA_ADR 0x20
 
 #define BTN_LEFT 6
 #define BTN_START 5
@@ -31,6 +29,8 @@
 #define LCD_RESET 4
 
 static int out_data=0;
+
+static int tca_addr=0;
 
 void io_init() {
 	i2c_config_t conf = {
@@ -48,10 +48,29 @@ void io_init() {
 	uint8_t w[2];
 	w[0]=0x03; //config
 	w[1]=(1<<BTN_LEFT)|(1<<BTN_RIGHT)|(1<<BTN_START);
-	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, TCA_ADR, w, 2, pdMS_TO_TICKS(100)));
+	
+	//Try to auto-detect tca9534 and tca9534a chips
+	const int tca_addrs[]={0x20, 0x38, 0};
+	esp_err_t r=ESP_OK;
+	int i=0;
+	do {
+		//find next possible i2c adddress
+		tca_addr=tca_addrs[i];
+		if (tca_addr==0) {	//ran out of possible addresses
+			//bail out
+			ESP_LOGE(TAG, "No working TCA9534 detected!");
+			ESP_ERROR_CHECK(r);
+			break; //just in case
+		}
+		//see if it acks here
+		r=i2c_master_write_to_device(I2C_PORT, tca_addr, w, 2, pdMS_TO_TICKS(100));
+		i++;
+	} while (r!=ESP_OK);
+	//Okay, tca_addr should contain a working address here.
+
 	w[0]=1; //output
 	w[1]=0;
-	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, TCA_ADR, w, 2, pdMS_TO_TICKS(100)));
+	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, tca_addr, w, 2, pdMS_TO_TICKS(100)));
 	mpu6050_init(I2C_PORT);
 
 	ESP_ERROR_CHECK(adc1_config_channel_atten(PLUNGER_ADC, ADC_ATTEN_DB_2_5));
@@ -62,12 +81,12 @@ void io_init() {
 void io_lcd_reset(int reset) {
 	if (reset) out_data|=(1<<LCD_RESET); else out_data&=~(1<<LCD_RESET);
 	uint8_t data[2]={1, out_data};
-	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, TCA_ADR, data, 2, pdMS_TO_TICKS(100)));
+	ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, tca_addr, data, 2, pdMS_TO_TICKS(100)));
 }
 
 int io_get_btn_bitmap() {
 	uint8_t w=0, r=0;
-	ESP_ERROR_CHECK(i2c_master_write_read_device(I2C_PORT, TCA_ADR, &w, 1, &r, 1, pdMS_TO_TICKS(100)));
+	ESP_ERROR_CHECK(i2c_master_write_read_device(I2C_PORT, tca_addr, &w, 1, &r, 1, pdMS_TO_TICKS(100)));
 
 	int v=0;
 	if (!(r&(1<<BTN_LEFT))) v|=BM_LEFT;
